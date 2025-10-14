@@ -1,107 +1,100 @@
 "use client"
 
+import * as React from "react"
+
 import { AppSidebar } from "@/components/app-sidebar"
 import { Badge } from "@/components/ui/badge"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import {
-  Clipboard,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react"
+import { Clipboard, RefreshCw, Sparkles } from "lucide-react"
 
-type TimelineItem = {
+type MessageDirection = "incoming" | "outgoing"
+
+type TimelinePair = {
   id: string
-  role: "contact" | "user" | "assistant"
-  title: string
-  content: string
-  timestamp: string
+  left: {
+    direction: MessageDirection
+    content: string
+    timestamp: string
+    canParse?: boolean
+  }
+  right: (
+    | {
+        kind: "analysis"
+        summary: string
+        translation: string
+        followUps: string[]
+      }
+    | {
+        kind: "intent"
+        intent: string
+      }
+  )
 }
 
 const activeConversation = {
   id: "acme-rfp",
   title: "Acme Corp. RFP 跟进",
-  counterpart: "Michael",
 }
 
-const timeline: TimelineItem[] = [
+const timelinePairs: TimelinePair[] = [
   {
     id: "msg-001",
-    role: "contact",
-    title: "Michael · EN 原文",
-    content:
-      "Hi Iris,\nThanks for sending over the initial scope. Before we finalize the paperwork, could you share a detailed delivery timeline and a breakdown of the engineering effort?",
-    timestamp: "今天 09:10",
+    left: {
+      direction: "incoming",
+      content:
+        "Hi Iris,\nThanks for sending over the initial scope. Before we finalize the paperwork, could you share a detailed delivery timeline and a breakdown of the engineering effort?",
+      timestamp: "今天 09:10",
+      canParse: true,
+    },
+    right: {
+      kind: "analysis",
+      summary: "对方需要完整的交付排期与工程投入说明，希望确认能否与设计并行。",
+      translation:
+        "嗨 Iris，感谢你的初步范围。我们想先拿到详细的交付时间表以及工程人力投入的拆解，以便确认能否和设计同步推进。",
+      followUps: [
+        "补充标准排期与关键里程碑。",
+        "拆解工程人天/角色投入，说明并行方案可行性。",
+      ],
+    },
   },
   {
     id: "msg-002",
-    role: "contact",
-    title: "Michael · EN 追加",
-    content:
-      "If you have an accelerated option, let us know what trade-offs we should expect. We would appreciate receiving the full proposal by next Wednesday.",
-    timestamp: "今天 09:12",
+    left: {
+      direction: "incoming",
+      content:
+        "If you have an accelerated option, let us know what trade-offs we should expect. We would appreciate receiving the full proposal by next Wednesday.",
+      timestamp: "今天 09:12",
+      canParse: true,
+    },
+    right: {
+      kind: "analysis",
+      summary: "希望了解加速方案的成本与取舍，明确下周三前收到完整提案。",
+      translation:
+        "如果有加速方案，请告知可能的取舍与影响。我们希望能在下周三之前拿到完整提案。",
+      followUps: ["准备加速方案的资源与风险说明。", "确认交付节点是否需要额外审批。"],
+    },
   },
   {
-    id: "msg-003",
-    role: "assistant",
-    title: "AI 草稿 · 版本 A",
-    content:
-      "Hello Michael,\nThanks for your patience. We can deliver the detailed timeline by next Wednesday. The standard plan keeps design and engineering in sync, and we will share trade-offs for an accelerated option.",
-    timestamp: "今天 09:20",
-  },
-  {
-    id: "msg-004",
-    role: "user",
-    title: "我的手动调整",
-    content:
-      "已追加提醒：若需加速需提前两天确认预算调整，并强调加速方案的额外资源投入。",
-    timestamp: "今天 09:28",
-  },
-]
-
-const translationModes = [
-  {
-    id: "literal",
-    label: "直译",
-    content:
-      "感谢您的耐心等待。我们正在协调内部资源，预计在下周三前提供完整的报价明细以及交付排期。",
-  },
-  {
-    id: "summary",
-    label: "意译",
-    content:
-      "对方希望下周三前拿到提案，包括交付时间和工程投入。若有提速方案，需要提前说明差异与风险。",
-  },
-  {
-    id: "actions",
-    label: "行动项",
-    content: [
-      "确认设计与研发是否可以并行安排。",
-      "补充报价明细：人天、第三方成本、预备金。",
-      "准备标准与加速两套排期方案。",
-    ].join("\n"),
-  },
-]
-
-const insightNotes = [
-  {
-    id: "insight-001",
-    badge: "语气建议",
-    content: "保持专业且积极的语气，可加入感谢与行动承诺，提到我们正在内部确认。",
-  },
-  {
-    id: "insight-002",
-    badge: "风险提醒",
-    content: "若加速方案需额外费用或资源，需提前提示预算调整及可能的质量风险。",
+    id: "reply-001",
+    left: {
+      direction: "outgoing",
+      content:
+        "Hi Michael,\n\n我们已同步研发团队，预计下周三前能提交包含标准与加速双方案的完整排期与投入说明。如需加速，我们会提前向你确认额外资源与预算影响。\n\nBest regards,\nIris",
+      timestamp: "今天 09:32",
+    },
+    right: {
+      kind: "intent",
+      intent:
+        "告知标准/加速两套排期将同步提供，强调若需提速需提前确认资源与预算调整，并确保回复语气专业、积极。",
+    },
   },
 ]
 
@@ -140,86 +133,35 @@ export default function Home() {
         </header>
         <div className="flex flex-1 overflow-hidden">
           <main className="flex flex-1 flex-col">
-            <div className="flex flex-1 overflow-hidden px-6 py-6">
-              <section className="flex w-1/2 min-w-0 flex-col border-r pr-6">
+            <div className="flex flex-1 flex-col px-6 pt-6 pb-24">
+              <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 pb-4">
                 <ColumnHeader
                   title="对话消息"
-                  description={`${activeConversation.counterpart} 的原始来信与历史草稿`}
+                  description="粘贴收到的消息或添加计划发送的文本"
                 />
-                <ScrollArea className="flex-1 pr-4">
-                  <div className="space-y-4">
-                    {timeline.map((item) => (
-                      <MessageItem key={item.id} item={item} />
+                <div aria-hidden className="w-px bg-border" />
+                <ColumnHeader
+                  title="解析与意图"
+                  description="查看解析结果并完善回复意图"
+                />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <div className="grid h-full grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 overflow-y-auto px-1">
+                  <div className="space-y-6 pr-1">
+                    {timelinePairs.map((pair) => (
+                      <MessageCard key={`${pair.id}-left`} data={pair.left} />
                     ))}
                   </div>
-                </ScrollArea>
-                <ColumnComposer
-                  label="追加原文/上下文"
-                  placeholder="粘贴最新来信或补充说明…"
-                  primaryActionLabel="添加到对话"
-                  secondaryActionLabel="粘贴剪贴板"
-                />
-              </section>
-              <section className="flex w-1/2 min-w-0 flex-col pl-6">
-                <ColumnHeader title="解析与我的回复" description="翻译、要点与意图输出" />
-                <ScrollArea className="flex-1 pr-4">
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <Tabs defaultValue={translationModes[0]?.id} className="w-full">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            翻译视图
-                          </span>
-                          <Button variant="ghost" size="sm" className="text-xs">
-                            <Clipboard className="mr-2 h-3.5 w-3.5" />
-                            复制解析
-                          </Button>
-                        </div>
-                        <TabsList className="mt-2">
-                          {translationModes.map((mode) => (
-                            <TabsTrigger key={mode.id} value={mode.id}>
-                              {mode.label}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                        {translationModes.map((mode) => (
-                          <TabsContent key={mode.id} value={mode.id}>
-                            <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed text-muted-foreground">
-                              <pre className="whitespace-pre-wrap">{mode.content}</pre>
-                            </div>
-                          </TabsContent>
-                        ))}
-                      </Tabs>
-                    </div>
-                    <div className="space-y-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        意图与提示
-                      </span>
-                      <div className="space-y-2">
-                        {insightNotes.map((note) => (
-                          <div
-                            key={note.id}
-                            className="rounded-lg border border-dashed bg-background/60 p-3 text-sm leading-relaxed"
-                          >
-                            <Badge variant="outline" className="mb-2 text-xs">
-                              {note.badge}
-                            </Badge>
-                            <p className="text-muted-foreground">{note.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  <div aria-hidden className="w-px bg-border" />
+                  <div className="space-y-6 pl-1">
+                    {timelinePairs.map((pair) => (
+                      <AnalysisCard key={`${pair.id}-right`} data={pair.right} />
+                    ))}
                   </div>
-                </ScrollArea>
-                <ColumnComposer
-                  label="我的回复草稿"
-                  placeholder="整理关键回复要点或直接撰写回复…"
-                  primaryActionLabel="保存草稿"
-                  secondaryActionLabel="复制到剪贴板"
-                  defaultValue={`Hi Michael,\n\n感谢你的耐心等待。我们已与研发团队确认资源，预计可在下周三前提交完整时间表，并同步两套排期方案（标准/加速）。如需加速，将提前与您确认额外资源与预算。\n\nBest regards,\nIris`}
-                />
-              </section>
+                </div>
+              </div>
             </div>
+            <BottomComposer />
           </main>
           <aside className="hidden w-[320px] shrink-0 border-l px-6 py-6 xl:block">
             <ControlPanel />
@@ -230,41 +172,19 @@ export default function Home() {
   )
 }
 
-function ColumnHeader({ title, description }: { title: string; description: string }) {
+function ColumnHeader({
+  title,
+  description,
+  align = "start",
+}: {
+  title: string
+  description: string
+  align?: "start" | "end"
+}) {
   return (
-    <div className="mb-4">
+    <div className={cn("flex flex-col gap-1", align === "end" && "items-end text-right")}>
       <h2 className="text-sm font-semibold">{title}</h2>
       <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
-  )
-}
-
-function MessageItem({ item }: { item: TimelineItem }) {
-  const align = item.role === "user" ? "end" : "start"
-  const variant =
-    item.role === "user"
-      ? "bg-primary text-primary-foreground"
-      : item.role === "assistant"
-        ? "bg-muted"
-        : "bg-background"
-
-  return (
-    <div className={cn("flex flex-col gap-2", align === "end" ? "items-end" : "items-start")}>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>{item.title}</span>
-        <span>·</span>
-        <span>{item.timestamp}</span>
-      </div>
-      <div
-        className={cn(
-          "max-w-full rounded-xl border px-4 py-3 text-sm leading-relaxed shadow-sm",
-          variant,
-          align === "end" && "rounded-tr-sm",
-          align === "start" && "rounded-tl-sm",
-        )}
-      >
-        <pre className="whitespace-pre-wrap">{item.content}</pre>
-      </div>
     </div>
   )
 }
@@ -285,18 +205,117 @@ function ColumnComposer({
   defaultValue,
 }: ColumnComposerProps) {
   return (
-    <div className="mt-6 border-t pt-4">
+    <div className="flex flex-col gap-3">
       <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
       <Textarea
         placeholder={placeholder}
-        className="mt-2 min-h-[120px] resize-none text-sm"
+        className="min-h-[140px] resize-none text-sm"
         defaultValue={defaultValue}
       />
-      <div className="mt-3 flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <Button variant="outline" size="sm">
           {secondaryActionLabel}
         </Button>
         <Button size="sm">{primaryActionLabel}</Button>
+      </div>
+    </div>
+  )
+}
+
+function MessageCard({ data }: { data: TimelinePair["left"] }) {
+  const isIncoming = data.direction === "incoming"
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border px-4 py-4 text-sm leading-relaxed shadow-sm",
+        isIncoming ? "items-start self-start" : "items-end self-end border-primary/40 bg-primary/5",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{data.timestamp}</span>
+        {isIncoming ? (
+          <Button variant="ghost" size="icon" className="h-7 w-7">
+            <Sparkles className="h-3.5 w-3.5" />
+            <span className="sr-only">解析该消息</span>
+          </Button>
+        ) : (
+          <Button variant="outline" size="icon" className="h-7 w-7">
+            <Clipboard className="h-3.5 w-3.5" />
+            <span className="sr-only">复制消息</span>
+          </Button>
+        )}
+      </div>
+      <pre className={cn("whitespace-pre-wrap text-foreground", isIncoming ? "text-left" : "text-right")}>
+        {data.content}
+      </pre>
+    </div>
+  )
+}
+
+function AnalysisCard({ data }: { data: TimelinePair["right"] }) {
+  if (data.kind === "analysis") {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border bg-muted/40 p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <Badge variant="outline" className="text-xs">
+            解析结果
+          </Badge>
+          <Button variant="ghost" size="sm" className="text-xs">
+            <Clipboard className="mr-2 h-3 w-3" />
+            复制解析
+          </Button>
+        </div>
+        <div className="space-y-2 text-sm leading-relaxed">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground">摘要</p>
+            <p className="mt-1 text-foreground">{data.summary}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground">翻译</p>
+            <pre className="mt-1 whitespace-pre-wrap text-muted-foreground">{data.translation}</pre>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground">后续动作</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+              {data.followUps.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm">
+      <Badge variant="outline" className="mb-2 text-xs">
+        回复意图
+      </Badge>
+      <p className="text-sm leading-relaxed text-foreground">{data.intent}</p>
+    </div>
+  )
+}
+
+function BottomComposer() {
+  return (
+    <div className="sticky bottom-0 z-10 bg-background px-6 pb-6 pt-4 shadow-[0_-12px_24px_-12px_rgba(15,23,42,0.12)]">
+      <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6">
+        <ColumnComposer
+          label="输入对方消息"
+          placeholder="粘贴邮件或聊天原文，支持多段文本…"
+          primaryActionLabel="添加消息"
+          secondaryActionLabel="清空"
+        />
+        <div aria-hidden className="w-px bg-border" />
+        <ColumnComposer
+          label="撰写回复意图"
+          placeholder="记录我要回复的要点、语气或希望包含的细节…"
+          primaryActionLabel="生成回复"
+          secondaryActionLabel="保存意图"
+          defaultValue="需要在回复中说明：1) 提供标准与加速双方案；2) 加速需提前确认预算与资源；3) 保持专业、积极语气。"
+        />
       </div>
     </div>
   )
@@ -307,10 +326,22 @@ function ControlPanel() {
     <div className="sticky top-20 flex h-[calc(100vh-8rem)] flex-col gap-6 overflow-y-auto">
       <section className="rounded-xl border bg-background p-5 shadow-sm">
         <div className="mb-4">
-          <h3 className="text-sm font-semibold">模型与生成</h3>
-          <p className="text-xs text-muted-foreground">选择模型、语气与提示词组合</p>
+          <h3 className="text-sm font-semibold">AI 操作</h3>
+          <p className="text-xs text-muted-foreground">
+            解析对方消息、调整提示词并生成最终回复
+          </p>
         </div>
         <div className="space-y-4 text-sm">
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" size="sm">
+              <Sparkles className="mr-2 h-3.5 w-3.5" />
+              解析选中消息
+            </Button>
+            <Button className="flex-1" size="sm">
+              <Sparkles className="mr-2 h-3.5 w-3.5" />
+              生成回复
+            </Button>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="model-select">模型</Label>
             <Select defaultValue="gpt-4o">
