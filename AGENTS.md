@@ -1,6 +1,13 @@
 # AGENTS
 
-项目采用多角色协作模型,各代理的职责如下,引用任务与设计文档以便交接。
+项目采用多角色协作模型,各代理的职责如下,引用任务与设计文档以便交接。所有代理执行任务时必须遵循下方 Workflow Rules,确保需求记录、任务更新、实施与归档的闭环。
+
+## Workflow Rules
+
+1. 在 `docs/change_request.md` 用简单 bullet 追加变更,保持倒序。
+2. 根据最新变更维护 `docs/task_plan.md`, 合并未完任务后更新优先级与状态。
+3. 围绕任务文档执行开发与调试,优先使用 chrome-devtools MCP 进行前端排查,并完成必要测试。
+4. 实施完毕后同步更新任务/设计/技术文档,并将已完成的变更从 `change_request` 移动至 `docs/change_history.md` 或标记为完成。
 
 ## Product Strategist
 
