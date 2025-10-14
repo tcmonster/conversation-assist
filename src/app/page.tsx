@@ -106,7 +106,7 @@ export default function Home() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="flex h-full flex-1 flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="-ml-1" />
@@ -132,38 +132,32 @@ export default function Home() {
           </div>
         </header>
         <div className="flex flex-1 overflow-hidden">
-          <main className="flex flex-1 flex-col">
-            <div className="flex flex-1 flex-col px-6 pt-6 pb-24">
-              <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 pb-4">
-                <ColumnHeader
-                  title="对话消息"
-                  description="粘贴收到的消息或添加计划发送的文本"
-                />
+          <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
+            <div className="px-6 pt-6">
+              <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 px-1">
+                <ColumnHeader title="对话消息" description="粘贴收到的消息或添加计划发送的文本" />
                 <div aria-hidden className="w-px bg-border" />
-                <ColumnHeader
-                  title="解析与意图"
-                  description="查看解析结果并完善回复意图"
-                />
+                <ColumnHeader title="解析与意图" description="查看解析结果并完善回复意图" />
               </div>
-              <div className="flex-1 overflow-hidden">
-                <div className="grid h-full grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 overflow-y-auto px-1">
-                  <div className="space-y-6 pr-1">
-                    {timelinePairs.map((pair) => (
-                      <MessageCard key={`${pair.id}-left`} data={pair.left} />
-                    ))}
-                  </div>
-                  <div aria-hidden className="w-px bg-border" />
-                  <div className="space-y-6 pl-1">
-                    {timelinePairs.map((pair) => (
-                      <AnalysisCard key={`${pair.id}-right`} data={pair.right} />
-                    ))}
-                  </div>
+            </div>
+            <div className="flex-1 min-h-0 px-6">
+              <div className="grid h-full grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 overflow-y-auto px-1 pb-20">
+                <div className="space-y-6 pr-1">
+                  {timelinePairs.map((pair) => (
+                    <MessageCard key={`${pair.id}-left`} data={pair.left} />
+                  ))}
+                </div>
+                <div aria-hidden className="w-px bg-border" />
+                <div className="space-y-6 pl-1">
+                  {timelinePairs.map((pair) => (
+                    <AnalysisCard key={`${pair.id}-right`} data={pair.right} />
+                  ))}
                 </div>
               </div>
             </div>
             <BottomComposer />
           </main>
-          <aside className="hidden w-[320px] shrink-0 border-l px-6 py-6 xl:block">
+          <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l px-6 py-6 xl:block">
             <ControlPanel />
           </aside>
         </div>
@@ -300,8 +294,8 @@ function AnalysisCard({ data }: { data: TimelinePair["right"] }) {
 
 function BottomComposer() {
   return (
-    <div className="sticky bottom-0 z-10 bg-background px-6 pb-6 pt-4 shadow-[0_-12px_24px_-12px_rgba(15,23,42,0.12)]">
-      <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6">
+    <div className="sticky bottom-0 bg-background px-6 py-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6 px-1">
         <ColumnComposer
           label="输入对方消息"
           placeholder="粘贴邮件或聊天原文，支持多段文本…"
