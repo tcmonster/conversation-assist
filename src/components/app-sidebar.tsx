@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   Archive,
   ChevronDown,
@@ -9,15 +9,15 @@ import {
   Plus,
   Search,
   Settings,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
 import {
   Sidebar,
   SidebarContent,
@@ -30,59 +30,63 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarHeader,
-} from "@/components/ui/sidebar"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 type ConversationItem = {
-  id: string
-  title: string
-  updatedAt: string
-}
+  id: string;
+  title: string;
+  updatedAt: string;
+};
 
 const pinned: ConversationItem[] = [
   { id: "acme-rfp", title: "Acme RFP · 时间确认", updatedAt: "2 小时前" },
   { id: "launch-brief", title: "发布会媒体沟通", updatedAt: "昨天" },
-]
+];
 
 const recent: ConversationItem[] = [
   { id: "supplier-checkin", title: "日本供应商月度检查", updatedAt: "今天" },
   { id: "support-ticket", title: "客服工单 #4827", updatedAt: "昨天" },
   { id: "contract-revision", title: "合同条款修订", updatedAt: "周一" },
   { id: "pricing-followup", title: "报价澄清邮件", updatedAt: "上周" },
-]
+];
 
 const archived: ConversationItem[] = [
   { id: "pilot-feedback", title: "内测体验反馈", updatedAt: "1 月 10 日" },
   { id: "holiday-offer", title: "节日营销跟进", updatedAt: "去年 12 月" },
-]
+];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [searchTerm, setSearchTerm] = React.useState("")
-  const [isArchivedOpen, setArchivedOpen] = React.useState(false)
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [isArchivedOpen, setArchivedOpen] = React.useState(false);
 
-  const search = searchTerm.trim().toLowerCase()
+  const search = searchTerm.trim().toLowerCase();
 
   const filterItems = React.useCallback(
     (items: ConversationItem[]) =>
       items.filter((item) => item.title.toLowerCase().includes(search)),
-    [search],
-  )
+    [search]
+  );
 
-  const showPinned = filterItems(pinned)
-  const showRecent = filterItems(recent)
-  const showArchived = filterItems(archived)
+  const showPinned = filterItems(pinned);
+  const showRecent = filterItems(recent);
+  const showArchived = filterItems(archived);
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="border-b px-3 py-2">
+      <SidebarHeader className="px-3 py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
               CA
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-semibold leading-tight">Conversation</span>
-              <span className="text-xs text-muted-foreground leading-tight">Assist</span>
+              <span className="text-sm font-semibold leading-tight">
+                Conversation
+              </span>
+              <span className="text-xs text-muted-foreground leading-tight">
+                Assist
+              </span>
             </div>
           </div>
           <Button size="icon" variant="outline">
@@ -97,7 +101,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="搜索会话…"
-            className="pl-8 text-sm"
+            className="pl-8 text-sm bg-background"
           />
           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
@@ -128,7 +132,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <ChevronDown
                   className={cn(
                     "h-3 w-3 transition-transform",
-                    isArchivedOpen ? "rotate-180" : "rotate-0",
+                    isArchivedOpen ? "rotate-180" : "rotate-0"
                   )}
                 />
               </button>
@@ -146,23 +150,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </Collapsible>
       </SidebarContent>
       <SidebarFooter className="border-t px-3 py-2">
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sm">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 text-sm"
+        >
           <Settings className="h-4 w-4" />
           全局设置
         </Button>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  )
+  );
 }
 
 type ConversationSectionProps = {
-  label?: string
-  items: ConversationItem[]
-  actionIcon: React.ReactNode
-  actionLabel: string
-  emptyLabel: string
-}
+  label?: string;
+  items: ConversationItem[];
+  actionIcon: React.ReactNode;
+  actionLabel: string;
+  emptyLabel: string;
+};
 
 function ConversationSection({
   label,
@@ -181,7 +189,9 @@ function ConversationSection({
       <SidebarMenu>
         {items.length === 0 ? (
           <SidebarMenuItem>
-            <span className="px-2 py-1 text-xs text-muted-foreground">{emptyLabel}</span>
+            <span className="px-2 py-1 text-xs text-muted-foreground">
+              {emptyLabel}
+            </span>
           </SidebarMenuItem>
         ) : (
           items.map((item) => (
@@ -198,5 +208,5 @@ function ConversationSection({
         )}
       </SidebarMenu>
     </SidebarGroup>
-  )
+  );
 }

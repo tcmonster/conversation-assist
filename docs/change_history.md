@@ -1,5 +1,6 @@
 # Change History
 
+- [x] 2025-10-16 · Codex: 抽离 AI 操作面板组件并去除卡片包裹 (影响: src/app/page.tsx, src/components/conversation/control-panel.tsx)
 - [x] 2025-10-15 · Codex: 紧凑聊天行距、扩充示例消息并恢复 AI 控制面板 (影响: src/app/page.tsx, src/components/conversation/column-composer.tsx)
 - [x] 2025-10-15 · Codex: 调整气泡最大宽度并连通分割线, 统一上下栏衔接 (影响: src/app/page.tsx)
 - [x] 2025-10-15 · Codex: 优化气泡宽度与底部输入, 去除调试底色并区分消息配色 (影响: src/app/page.tsx, src/components/conversation/column-composer.tsx)

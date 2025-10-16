@@ -1,43 +1,31 @@
 "use client";
 
 import * as React from "react";
+import { useEffect, useRef } from "react";
 
 import { ColumnComposer } from "@/components/conversation/column-composer";
 import { ColumnHeader } from "@/components/conversation/column-header";
+import { ControlPanel } from "@/components/conversation/control-panel";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { Sparkles } from "lucide-react";
 
 const activeConversation = {
   id: "acme-rfp",
   title: "Acme Corp. RFP 跟进",
 };
 
-const quickIntents = ["确认交付时间", "请求更多背景信息", "盘点风险提醒"];
 const tonePresets = ["商务稳健", "友好礼貌", "简洁直接"];
-const promptTags = ["商务", "售后", "报价", "合作意图"];
 
 type FeedCell =
   | {
@@ -181,6 +169,15 @@ const conversationFeedRows: ConversationFeedRow[] = [
 ];
 
 export default function Home() {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // 页面加载时自动滚动到底部
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, []);
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -188,12 +185,8 @@ export default function Home() {
         <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="h-6" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="text-sm text-foreground">
-                  会话中心
-                </BreadcrumbItem>
                 <BreadcrumbItem>
                   <span className="text-sm font-semibold text-foreground">
                     {activeConversation.title}
@@ -209,21 +202,22 @@ export default function Home() {
               className="shrink-0"
               left={
                 <ColumnHeader
-                  title="顶部 · 左侧"
-                  description="用于放置概览、状态等信息"
+                  title="Conversation"
+                  description="实际会话内容"
                 />
               }
               right={
                 <ColumnHeader
-                  title="顶部 · 右侧"
-                  description="展示快捷入口或操作区域"
+                  title="Intention"
+                  description="对话意图"
                 />
               }
             />
             <SectionRow
               variant="matrix"
               className="flex-1 min-h-0 overflow-hidden"
-              gridClassName="h-full overflow-y-auto px-4 py-4"
+              gridClassName="h-full overflow-y-auto py-4"
+              gridProps={{ ref: scrollContainerRef }}
               rows={conversationFeedRows.map((row) => ({
                 id: row.id,
                 left: row.left ? (
@@ -252,8 +246,8 @@ export default function Home() {
               }
             />
           </main>
-          <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l px-6 py-6 xl:block">
-            <ControlPanel />
+          <aside className="hidden w-[360px] shrink-0 border-l xl:block">
+            <ControlPanel tonePresets={tonePresets} />
           </aside>
         </div>
       </SidebarInset>
@@ -292,10 +286,10 @@ function MessageBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(520px,75%)] rounded-2xl border px-4 py-3 shadow-sm",
+          "w-fit max-w-[min(520px,85%)] rounded-2xl border px-4 py-3",
           isIncoming
-            ? "border-border bg-muted text-foreground"
-            : "border-border bg-card text-foreground"
+            ? "border-border text-foreground"
+            : "bg-neutral-900 text-background"
         )}
       >
         <p className="whitespace-pre-wrap">{data.content}</p>
@@ -329,12 +323,10 @@ function InsightBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(520px,75%)] whitespace-pre-wrap rounded-2xl border px-4 py-3 shadow-sm",
+          "w-fit max-w-[min(520px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
           isIncoming
-            ? "border-border bg-muted text-foreground"
-            : isIntent
-            ? "border-border bg-card text-foreground"
-            : "border-border bg-background text-foreground"
+            ? "border-dashed bg-muted text-foreground"
+            : "border-dashed bg-card text-foreground"
         )}
       >
         {data.content}
@@ -381,7 +373,9 @@ type SectionRowMatrixProps = {
   }>;
   className?: string;
   gridClassName?: string;
-  gridProps?: React.HTMLAttributes<HTMLDivElement>;
+  gridProps?: React.HTMLAttributes<HTMLDivElement> & {
+    ref?: React.Ref<HTMLDivElement>;
+  };
 };
 
 type SectionRowProps = SectionRowSplitProps | SectionRowMatrixProps;
@@ -404,7 +398,7 @@ function SectionRow(props: SectionRowProps) {
         <div
           {...gridRest}
           className={cn(
-            "grid h-full min-h-0 auto-rows-max grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-6 gap-y-4",
+            "grid h-full min-h-0 auto-rows-max grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-8 gap-y-4",
             gridClassName,
             gridPropsClassName
           )}
@@ -418,7 +412,7 @@ function SectionRow(props: SectionRowProps) {
               <div className="flex h-full min-h-0 flex-col gap-2">
                 {row.left ?? <EmptyFeedCell />}
               </div>
-              <div className="flex h-full min-h-0 flex-col gap-2">
+              <div className="flex h-full min-h-0 flex-col gap-2 pr-4">
                 {row.right ?? <EmptyFeedCell />}
               </div>
             </React.Fragment>
@@ -440,7 +434,7 @@ function SectionRow(props: SectionRowProps) {
       <div
         {...gridRest}
         className={cn(
-          "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-6",
+          "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]",
           gridClassName,
           gridPropsClassName
         )}
@@ -467,127 +461,6 @@ function SectionRow(props: SectionRowProps) {
           {right}
         </div>
       </div>
-    </div>
-  );
-}
-
-function ControlPanel() {
-  return (
-    <div className="sticky top-6 flex h-[calc(100vh-8rem)] flex-col gap-6 overflow-y-auto">
-      <section className="rounded-xl border bg-background p-5 shadow-sm">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold">AI 操作</h3>
-          <p className="text-xs text-muted-foreground">
-            解析对方消息、调整提示词并生成最终回复
-          </p>
-        </div>
-        <div className="space-y-4 text-sm">
-          <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" size="sm">
-              <Sparkles className="mr-2 h-3.5 w-3.5" />
-              解析选中消息
-            </Button>
-            <Button className="flex-1" size="sm">
-              <Sparkles className="mr-2 h-3.5 w-3.5" />
-              生成回复
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="model-select">模型</Label>
-            <Select defaultValue="gpt-4o">
-              <SelectTrigger id="model-select" className="h-9 text-sm">
-                <SelectValue placeholder="选择模型" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="gpt-4o">GPT-4o · 精准模式</SelectItem>
-                <SelectItem value="gpt-4o-mini">
-                  GPT-4o mini · 高速模式
-                </SelectItem>
-                <SelectItem value="gemini">Gemini 1.5 · 多模态</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>目标语气</Label>
-            <div className="flex flex-wrap gap-2">
-              {tonePresets.map((preset) => (
-                <Button key={preset} variant="outline" size="sm">
-                  {preset}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>快捷意图</Label>
-            <div className="flex flex-wrap gap-2">
-              {quickIntents.map((intent) => (
-                <Button key={intent} variant="secondary" size="sm">
-                  {intent}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="prompt-notes">补充指令</Label>
-            <Textarea
-              id="prompt-notes"
-              rows={3}
-              className="resize-none text-sm"
-              defaultValue="回复需包含详细排期，并提示如需调整预算请提前 2 天沟通。"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>提示词标签</Label>
-            <div className="flex flex-wrap gap-2">
-              {promptTags.map((tag) => (
-                <Button key={tag} variant="outline" size="sm">
-                  #{tag}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <ToggleRow
-              label="保留敏感上下文"
-              description="模型调用时附带公司背景及历史回复"
-              defaultChecked
-            />
-            <ToggleRow
-              label="自动生成行动项"
-              description="同时输出待办列表方便回顾"
-            />
-          </div>
-        </div>
-        <div className="mt-5 flex items-center justify-between gap-2">
-          <Button variant="outline" size="sm">
-            保存方案
-          </Button>
-          <Button size="sm">
-            <Sparkles className="mr-2 h-3.5 w-3.5" />
-            一键生成
-          </Button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  description,
-  defaultChecked = false,
-}: {
-  label: string;
-  description: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border p-3">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      <Switch defaultChecked={defaultChecked} />
     </div>
   );
 }
