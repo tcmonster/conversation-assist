@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 
+import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -150,14 +151,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </Collapsible>
       </SidebarContent>
       <SidebarFooter className="border-t px-3 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2 text-sm"
-        >
-          <Settings className="h-4 w-4" />
-          全局设置
-        </Button>
+        <SettingsDialog>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-sm"
+          >
+            <Settings className="h-4 w-4" />
+            全局设置
+          </Button>
+        </SettingsDialog>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

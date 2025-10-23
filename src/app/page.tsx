@@ -12,7 +12,6 @@ import {
   BreadcrumbItem,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
@@ -312,7 +311,6 @@ function InsightBubble({
   data: Extract<FeedCell, { type: "analysis" | "intent" }>;
 }) {
   const isIncoming = data.direction === "incoming";
-  const isIntent = data.type === "intent";
 
   return (
     <div
