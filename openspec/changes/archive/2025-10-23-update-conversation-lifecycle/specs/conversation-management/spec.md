@@ -24,6 +24,8 @@
 - **THEN** 标题更新写入状态与 localStorage,侧边栏列表同步显示新标题  
 - **AND** 若输入为空,系统回退到默认标题,避免产生空白名称
 
+## ADDED Requirements
+
 ### Requirement: Conversation List Presentation
 侧边栏会话列表 MUST 以精简方式展示,保障用户快速定位目标会话。
 

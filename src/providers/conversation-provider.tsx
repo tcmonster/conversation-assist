@@ -24,7 +24,7 @@ export type ConversationMirror = {
 export type ConversationFeedRow = {
   id: string;
   message: ConversationMessage;
-  mirror: ConversationMirror;
+  mirror?: ConversationMirror | null;
 };
 
 export type Conversation = {
@@ -55,6 +55,18 @@ type ConversationAction =
       content: string;
       intent?: string;
     }
+  | {
+      type: "updateMessage";
+      conversationId: string;
+      rowId: string;
+      content: string;
+      intent?: string;
+    }
+  | {
+      type: "removeFeedRow";
+      conversationId: string;
+      rowId: string;
+    }
   | { type: "addIntentDraft"; conversationId: string; intent: string }
   | { type: "delete"; id: string };
 
@@ -71,6 +83,8 @@ type ConversationContextValue = {
   addPartnerMessage: (content: string) => void;
   addSelfMessage: (content: string, intent?: string) => void;
   addIntentDraft: (intent: string) => void;
+  updateMessage: (rowId: string, content: string, options?: { intent?: string }) => void;
+  removeFeedRow: (rowId: string) => void;
   setActiveConversation: (id: string) => void;
   togglePin: (id: string) => void;
   toggleArchive: (id: string) => void;
@@ -216,6 +230,24 @@ function createSelfFeedRow(params: {
   };
 }
 
+function updateFeedRow(
+  conversation: Conversation,
+  rowId: string,
+  updater: (row: ConversationFeedRow) => ConversationFeedRow
+): Conversation {
+  const nextFeed = conversation.feed.map((row) =>
+    row.id === rowId ? updater(row) : row
+  );
+  const latestRow = nextFeed.find((row) => row.id === rowId);
+  const updatedAt =
+    latestRow?.message.timestamp ?? conversation.updatedAt;
+  return {
+    ...conversation,
+    feed: nextFeed,
+    updatedAt,
+  };
+}
+
 function parseConversationState(raw: string): ConversationState | undefined {
   try {
     const parsed = JSON.parse(raw) as Partial<ConversationState>;
@@ -315,8 +347,11 @@ function normalizeFeedRow(input: unknown): ConversationFeedRow | undefined {
   if (typeof candidate.id !== "string") return undefined;
 
   const message = normalizeMessage(candidate.message);
-  const mirror = normalizeMirror(candidate.mirror, message?.role);
-  if (!message || !mirror) return undefined;
+  if (!message) return undefined;
+  const mirror =
+    candidate.mirror === null || candidate.mirror === undefined
+      ? undefined
+      : normalizeMirror(candidate.mirror, message.role) ?? undefined;
 
   return {
     id: candidate.id,
@@ -523,6 +558,78 @@ function conversationReducer(
         },
       };
     }
+    case "updateMessage": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      if (!conversation.feed.some((row) => row.id === action.rowId)) {
+        return state;
+      }
+      const now = new Date().toISOString();
+      const nextConversation = updateFeedRow(
+        conversation,
+        action.rowId,
+        (row) => {
+          const nextRow: ConversationFeedRow = {
+            ...row,
+            message: {
+              ...row.message,
+              content: action.content,
+              timestamp: now,
+            },
+          };
+          if (action.intent !== undefined) {
+            if (nextRow.mirror) {
+              nextRow.mirror = {
+                ...nextRow.mirror,
+                content: action.intent,
+                timestamp: now,
+              };
+            } else if (row.message.role === "self") {
+              nextRow.mirror = {
+                type: "intent",
+                content: action.intent,
+                timestamp: now,
+              };
+            }
+          } else if (nextRow.mirror) {
+            nextRow.mirror = {
+              ...nextRow.mirror,
+              timestamp: now,
+            };
+          }
+          return nextRow;
+        }
+      );
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
+    case "removeFeedRow": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      if (!conversation.feed.some((row) => row.id === action.rowId)) {
+        return state;
+      }
+      const filtered = conversation.feed.filter(
+        (row) => row.id !== action.rowId
+      );
+      const nextConversation: Conversation = {
+        ...conversation,
+        feed: filtered,
+        updatedAt: filtered[filtered.length - 1]?.message.timestamp ?? conversation.updatedAt,
+      };
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
     case "delete": {
       if (!state.conversations[action.id]) return state;
       const { [action.id]: _removed, ...rest } = state.conversations;
@@ -667,6 +774,26 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
           type: "addIntentDraft",
           conversationId: targetId,
           intent,
+        });
+      },
+      updateMessage: (rowId: string, content: string, options) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "updateMessage",
+          conversationId: targetId,
+          rowId,
+          content,
+          intent: options?.intent,
+        });
+      },
+      removeFeedRow: (rowId: string) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "removeFeedRow",
+          conversationId: targetId,
+          rowId,
         });
       },
       setActiveConversation: (id: string) => dispatch({ type: "setActive", id }),

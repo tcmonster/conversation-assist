@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ColumnComposer } from "@/components/conversation/column-composer";
@@ -31,10 +31,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useConversations } from "@/providers/conversation-provider";
 import type {
   Conversation,
   ConversationFeedRow,
+  ConversationMessageRole,
+  ConversationMirror,
 } from "@/providers/conversation-provider";
 import { cn } from "@/lib/utils";
 
@@ -43,12 +54,15 @@ const tonePresets = ["商务稳健", "友好礼貌", "简洁直接"];
 type FeedCell =
   | {
       type: "message";
+      rowId: string;
+      role: ConversationMessageRole;
       direction: "incoming" | "outgoing";
       timestamp: string;
       content: string;
     }
   | {
       type: "analysis" | "intent";
+      rowId: string;
       direction: "incoming" | "outgoing";
       timestamp: string;
       content: string;
@@ -58,7 +72,7 @@ type FeedCell =
 type FeedRow = {
   id: string;
   left: FeedCell;
-  right: FeedCell;
+  right?: FeedCell;
 };
 
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -76,8 +90,21 @@ function formatTimeLabel(timestamp: string) {
   return timeFormatter.format(date);
 }
 
+function summarizeContent(content: string, fallback = "该消息") {
+  const trimmed = content.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length <= 32 ? trimmed : `${trimmed.slice(0, 32)}…`;
+}
+
+function shouldRenderMirror(mirror?: ConversationMirror | null) {
+  if (!mirror) return false;
+  const hasHighlights = Array.isArray(mirror.highlights) && mirror.highlights.length > 0;
+  const hasContent = mirror.content.trim().length > 0;
+  return hasContent || hasHighlights;
+}
+
 function toFeedRow(row: ConversationFeedRow): FeedRow | null {
-  if (!row || !row.message || !row.mirror) {
+  if (!row || !row.message) {
     return null;
   }
   const direction = row.message.role === "partner" ? "incoming" : "outgoing";
@@ -86,17 +113,23 @@ function toFeedRow(row: ConversationFeedRow): FeedRow | null {
     id: row.id,
     left: {
       type: "message",
+      rowId: row.id,
+      role: row.message.role,
       direction,
       timestamp: formatTimeLabel(row.message.timestamp),
       content: row.message.content,
     },
-    right: {
-      type: row.mirror.type,
-      direction,
-      timestamp: formatTimeLabel(row.mirror.timestamp),
-      content: row.mirror.content,
-      highlights: row.mirror.highlights,
-    },
+    right:
+      shouldRenderMirror(row.mirror)
+        ? {
+            type: row.mirror!.type,
+            rowId: row.id,
+            direction,
+            timestamp: formatTimeLabel(row.mirror!.timestamp),
+            content: row.mirror!.content,
+            highlights: row.mirror!.highlights,
+          }
+        : undefined,
   };
 }
 
@@ -118,8 +151,20 @@ export default function Home() {
     addPartnerMessage,
     addSelfMessage,
     addIntentDraft,
+    updateMessage,
+    removeFeedRow,
   } = useConversations();
   const [isDeleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [editState, setEditState] = React.useState<{
+    rowId: string;
+    role: ConversationMessageRole;
+    content: string;
+  } | null>(null);
+  const [editDraft, setEditDraft] = React.useState("");
+  const [deleteState, setDeleteState] = React.useState<{
+    rowId: string;
+    label: string;
+  } | null>(null);
 
   const feedRows = React.useMemo(
     () => toFeedRows(activeConversation),
@@ -139,6 +184,22 @@ export default function Home() {
     }
   }, [activeConversation]);
 
+  React.useEffect(() => {
+    if (
+      editState &&
+      !activeConversation?.feed.some((row) => row.id === editState.rowId)
+    ) {
+      setEditState(null);
+      setEditDraft("");
+    }
+    if (
+      deleteState &&
+      !activeConversation?.feed.some((row) => row.id === deleteState.rowId)
+    ) {
+      setDeleteState(null);
+    }
+  }, [activeConversation, deleteState, editState]);
+
   const archiveLabel = activeConversation?.archivedAt ? "取消归档" : "归档";
   const ArchiveButtonIcon = activeConversation?.archivedAt
     ? ArchiveRestore
@@ -155,33 +216,89 @@ export default function Home() {
     setDeleteDialogOpen(false);
   }, [activeConversation, deleteConversation]);
 
+  const openEditMessage = React.useCallback(
+    (rowId: string, role: ConversationMessageRole, content: string) => {
+      setEditState({ rowId, role, content });
+      setEditDraft(content);
+    },
+    []
+  );
+
+  const closeEditDialog = React.useCallback(() => {
+    setEditState(null);
+    setEditDraft("");
+  }, []);
+
+  const handleEditSubmit = React.useCallback(() => {
+    if (!editState) return;
+    const trimmed = editDraft.trim();
+    if (!trimmed) {
+      toast.error("消息内容不能为空");
+      return;
+    }
+    updateMessage(editState.rowId, trimmed);
+    toast.success("消息已更新");
+    closeEditDialog();
+  }, [closeEditDialog, editDraft, editState, updateMessage]);
+
+  const openDeleteRow = React.useCallback((rowId: string, content: string) => {
+    setDeleteState({ rowId, label: summarizeContent(content) });
+  }, []);
+
+  const handleConfirmDeleteRow = React.useCallback(() => {
+    if (!deleteState) return;
+    removeFeedRow(deleteState.rowId);
+    toast.success("消息已删除");
+    setDeleteState(null);
+  }, [deleteState, removeFeedRow]);
+
   const matrixRows = React.useMemo(() => {
-    if (!activeConversation) {
+    if (!activeConversation || feedRows.length === 0) {
       return [
         {
           id: "empty",
-          left: <EmptyFeedCell message="暂无会话, 请在左侧新建" />,
-          right: <EmptyFeedCell message="暂无意图" />,
-        },
-      ];
-    }
-
-    if (feedRows.length === 0) {
-      return [
-        {
-          id: `${activeConversation.id}-empty`,
           left: <EmptyFeedCell message="暂无消息" />,
           right: <EmptyFeedCell message="暂无意图" />,
         },
       ];
     }
 
-    return feedRows.map((row) => ({
-      id: row.id,
-      left: <ConversationFeedCell data={row.left} />,
-      right: <ConversationFeedCell data={row.right} />,
-    }));
-  }, [activeConversation, feedRows]);
+    const rows = feedRows.map((row) => {
+      const leftCell = row.left;
+      const rightCell = row.right;
+      return {
+        id: row.id,
+        left: (
+          <ConversationFeedCell
+            data={leftCell}
+            canEdit={leftCell.type === "message"}
+            onEdit={
+              leftCell.type === "message"
+                ? () => openEditMessage(leftCell.rowId, leftCell.role, leftCell.content)
+                : undefined
+            }
+            onDelete={() => openDeleteRow(leftCell.rowId, leftCell.content)}
+          />
+        ),
+        right: rightCell ? (
+          <ConversationFeedCell
+            data={rightCell}
+            onDelete={() => openDeleteRow(rightCell.rowId, rightCell.content)}
+          />
+        ) : null,
+      };
+    });
+
+    if (rows.length > 0 && !rows.some((row) => row.right)) {
+      rows.push({
+        id: `${activeConversation.id}-intent-empty`,
+        left: null,
+        right: <EmptyFeedCell message="暂无意图" />,
+      });
+    }
+
+    return rows;
+  }, [activeConversation, feedRows, openDeleteRow, openEditMessage]);
 
   const handleAddPartnerMessage = React.useCallback(
     async (raw: string) => {
@@ -352,6 +469,67 @@ export default function Home() {
           </aside>
         </div>
       </SidebarInset>
+      <Dialog
+        open={Boolean(editState)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeEditDialog();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑消息</DialogTitle>
+            <DialogDescription>
+              {editState?.role === "partner" ? "对方消息" : "我方消息"}将被更新并同步保存。
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="请输入新的消息内容…"
+            className="min-h-[160px]"
+            value={editDraft}
+            onChange={(event) => setEditDraft(event.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={closeEditDialog}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={handleEditSubmit}
+              disabled={!editDraft.trim()}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={Boolean(deleteState)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteState(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除该消息?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteState?.label ?? "该消息"} 删除后不可恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleConfirmDeleteRow}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   );
 }
@@ -434,17 +612,45 @@ function EmptyFeedCell({ message = "暂无内容" }: { message?: string }) {
   );
 }
 
-function ConversationFeedCell({ data }: { data: FeedCell }) {
+function ConversationFeedCell({
+  data,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  data: FeedCell;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   if (data.type === "message") {
-    return <MessageBubble data={data} />;
+    return (
+      <MessageBubble
+        data={data}
+        canEdit={canEdit}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
+    );
   }
-  return <InsightBubble data={data} />;
+  return (
+    <InsightBubble
+      data={data}
+      onDelete={onDelete}
+    />
+  );
 }
 
 function MessageBubble({
   data,
+  canEdit,
+  onEdit,
+  onDelete,
 }: {
   data: Extract<FeedCell, { type: "message" }>;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const isIncoming = data.direction === "incoming";
 
@@ -459,28 +665,29 @@ function MessageBubble({
         className={cn(
           "w-fit max-w-[min(760px,85%)] rounded-2xl border px-4 py-3",
           isIncoming
-            ? "border-border text-foreground"
-            : "bg-neutral-900 text-background"
+            ? "border-transparent bg-neutral-900 text-background"
+            : "border-border bg-background text-foreground"
         )}
       >
         <p className="whitespace-pre-wrap">{data.content}</p>
       </div>
-      <span
-        className={cn(
-          "text-xs text-muted-foreground",
-          isIncoming ? "self-start" : "self-end"
-        )}
-      >
-        {data.timestamp}
-      </span>
+      <BubbleMeta
+        align={isIncoming ? "start" : "end"}
+        timestamp={data.timestamp}
+        canEdit={canEdit}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
 
 function InsightBubble({
   data,
+  onDelete,
 }: {
   data: Extract<FeedCell, { type: "analysis" | "intent" }>;
+  onDelete?: () => void;
 }) {
   const isIncoming = data.direction === "incoming";
 
@@ -508,14 +715,64 @@ function InsightBubble({
           </ul>
         ) : null}
       </div>
-      <span
-        className={cn(
-          "text-xs text-muted-foreground",
-          isIncoming ? "self-start" : "self-end"
-        )}
-      >
-        {data.timestamp}
-      </span>
+      <BubbleMeta
+        align={isIncoming ? "start" : "end"}
+        timestamp={data.timestamp}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
+function BubbleMeta({
+  align,
+  timestamp,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  align: "start" | "end";
+  timestamp: string;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 text-xs text-muted-foreground",
+        align === "start" ? "self-start" : "self-end"
+      )}
+    >
+      <span>{timestamp}</span>
+      {(canEdit || onDelete) && (
+        <div className="flex items-center gap-1">
+          {canEdit && onEdit ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onEdit}
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">编辑</span>
+            </Button>
+          ) : null}
+          {onDelete ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">删除</span>
+            </Button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -580,10 +837,10 @@ function SectionRow(props: SectionRowProps) {
           {rows.map((row) => (
             <React.Fragment key={row.id}>
               <div className="flex h-full min-h-0 flex-col gap-2">
-                {row.left ?? <EmptyFeedCell />}
+                {row.left ?? null}
               </div>
               <div className="flex h-full min-h-0 flex-col gap-2 pr-4">
-                {row.right ?? <EmptyFeedCell />}
+                {row.right ?? null}
               </div>
             </React.Fragment>
           ))}
