@@ -1,7 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Copy,
+  Languages,
+  Loader2,
+  Pencil,
+  RefreshCcw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { ColumnComposer } from "@/components/conversation/column-composer";
@@ -41,6 +50,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useConversations } from "@/providers/conversation-provider";
+import { useAiWorkflow } from "@/hooks/use-ai-workflow";
 import type {
   Conversation,
   ConversationFeedRow,
@@ -48,8 +58,6 @@ import type {
   ConversationMirror,
 } from "@/providers/conversation-provider";
 import { cn } from "@/lib/utils";
-
-const tonePresets = ["商务稳健", "友好礼貌", "简洁直接"];
 
 type FeedCell =
   | {
@@ -67,6 +75,8 @@ type FeedCell =
       timestamp: string;
       content: string;
       highlights?: string[];
+      status?: "idle" | "loading" | "ready" | "error";
+      error?: string | null;
     };
 
 type FeedRow = {
@@ -96,11 +106,28 @@ function summarizeContent(content: string, fallback = "该消息") {
   return trimmed.length <= 32 ? trimmed : `${trimmed.slice(0, 32)}…`;
 }
 
+async function copyPlainText(text: string) {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      toast.success("内容已复制");
+      return;
+    }
+    throw new Error("clipboard unavailable");
+  } catch (error) {
+    console.error("[copy] failed", error);
+    toast.error("复制失败", {
+      description: "浏览器可能未授权访问剪贴板",
+    });
+  }
+}
+
 function shouldRenderMirror(mirror?: ConversationMirror | null) {
   if (!mirror) return false;
   const hasHighlights = Array.isArray(mirror.highlights) && mirror.highlights.length > 0;
   const hasContent = mirror.content.trim().length > 0;
-  return hasContent || hasHighlights;
+  const hasStatus = mirror.status && mirror.status !== "idle";
+  return hasContent || hasHighlights || hasStatus;
 }
 
 function toFeedRow(row: ConversationFeedRow): FeedRow | null {
@@ -128,6 +155,8 @@ function toFeedRow(row: ConversationFeedRow): FeedRow | null {
             timestamp: formatTimeLabel(row.mirror!.timestamp),
             content: row.mirror!.content,
             highlights: row.mirror!.highlights,
+            status: row.mirror!.status,
+            error: row.mirror!.error,
           }
         : undefined,
   };
@@ -150,14 +179,15 @@ export default function Home() {
     renameConversation,
     addPartnerMessage,
     addSelfMessage,
-    addIntentDraft,
     updateMessage,
+    updateMirror,
     removeFeedRow,
   } = useConversations();
+  const { translatePartnerMessage, generateReply } = useAiWorkflow();
   const [isDeleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [editState, setEditState] = React.useState<{
     rowId: string;
-    role: ConversationMessageRole;
+   role: ConversationMessageRole;
     content: string;
   } | null>(null);
   const [editDraft, setEditDraft] = React.useState("");
@@ -165,6 +195,12 @@ export default function Home() {
     rowId: string;
     label: string;
   } | null>(null);
+  const [mirrorEditState, setMirrorEditState] = React.useState<{
+    rowId: string;
+    content: string;
+  } | null>(null);
+  const [mirrorEditDraft, setMirrorEditDraft] = React.useState("");
+  const [intentDraft, setIntentDraft] = React.useState("");
 
   const feedRows = React.useMemo(
     () => toFeedRows(activeConversation),
@@ -181,6 +217,9 @@ export default function Home() {
   React.useEffect(() => {
     if (!activeConversation) {
       setDeleteDialogOpen(false);
+      setIntentDraft("");
+      setMirrorEditState(null);
+      setMirrorEditDraft("");
     }
   }, [activeConversation]);
 
@@ -263,9 +302,33 @@ export default function Home() {
       ];
     }
 
-    const rows = feedRows.map((row) => {
+    const rows: Array<{
+      id: string;
+      left: React.ReactNode;
+      right: React.ReactNode | null;
+    }> = feedRows.map((row) => {
       const leftCell = row.left;
       const rightCell = row.right;
+      const originalRow = activeConversation.feed.find((item) => item.id === row.id);
+      const rightRetry = rightCell
+        ? rightCell.type === "analysis"
+          ? () => {
+              void translatePartnerMessage(row.id);
+            }
+          : rightCell.type === "intent"
+            ? () => {
+                const intentSource = originalRow?.mirror?.content ?? "";
+                void generateReply(intentSource, { rowId: row.id });
+              }
+            : undefined
+        : undefined;
+      const rightRetryLabel = rightCell
+        ? rightCell.type === "analysis"
+          ? "重新翻译"
+          : rightCell.type === "intent"
+            ? "重新生成"
+            : undefined
+        : undefined;
       return {
         id: row.id,
         left: (
@@ -278,12 +341,37 @@ export default function Home() {
                 : undefined
             }
             onDelete={() => openDeleteRow(leftCell.rowId, leftCell.content)}
+            onTranslate={
+              leftCell.type === "message" && leftCell.role === "partner"
+                ? () => {
+                    void translatePartnerMessage(row.id);
+                  }
+                : undefined
+            }
+            onCopy={
+              leftCell.type === "message" && leftCell.role === "self"
+                ? () => copyPlainText(leftCell.content)
+                : undefined
+            }
           />
         ),
         right: rightCell ? (
           <ConversationFeedCell
             data={rightCell}
             onDelete={() => openDeleteRow(rightCell.rowId, rightCell.content)}
+            onRetry={rightRetry}
+            retryLabel={rightRetryLabel}
+            onEdit={
+              rightCell.type === "intent"
+                ? () => {
+                    setMirrorEditState({
+                      rowId: rightCell.rowId,
+                      content: rightCell.content,
+                    });
+                    setMirrorEditDraft(rightCell.content);
+                  }
+                : undefined
+            }
           />
         ) : null,
       };
@@ -292,13 +380,20 @@ export default function Home() {
     if (rows.length > 0 && !rows.some((row) => row.right)) {
       rows.push({
         id: `${activeConversation.id}-intent-empty`,
-        left: null,
+        left: <span />, // 保持网格占位但不显示内容
         right: <EmptyFeedCell message="暂无意图" />,
       });
     }
 
     return rows;
-  }, [activeConversation, feedRows, openDeleteRow, openEditMessage]);
+  }, [
+    activeConversation,
+    feedRows,
+    generateReply,
+    openDeleteRow,
+    openEditMessage,
+    translatePartnerMessage,
+  ]);
 
   const handleAddPartnerMessage = React.useCallback(
     async (raw: string) => {
@@ -311,11 +406,14 @@ export default function Home() {
         toast.error("请输入对方消息内容");
         return false;
       }
-      addPartnerMessage(content);
+      const rowId = addPartnerMessage(content);
+      if (rowId) {
+        void translatePartnerMessage(rowId);
+      }
       toast.success("已记录对方消息");
       return true;
     },
-    [activeConversation, addPartnerMessage]
+    [activeConversation, addPartnerMessage, translatePartnerMessage]
   );
 
   const handleAddSelfMessage = React.useCallback(
@@ -342,14 +440,19 @@ export default function Home() {
         toast.error("请选择会话后再生成回复");
         return false;
       }
-      addIntentDraft(raw);
-      toast.success("已生成意图记录");
-      return true;
+      const result = await generateReply(raw);
+      if (result) {
+        setIntentDraft("");
+      }
+      return Boolean(result);
     },
-    [activeConversation, addIntentDraft]
+    [activeConversation, generateReply]
   );
 
-  const handleClearDraft = React.useCallback(async () => true, []);
+  const handleClearDraft = React.useCallback(async () => {
+    setIntentDraft("");
+    return true;
+  }, []);
 
   return (
     <SidebarProvider>
@@ -460,12 +563,14 @@ export default function Home() {
                   disabled={!isHydrated || !activeConversation}
                   onPrimaryAction={handleGenerateReply}
                   onSecondaryAction={handleClearDraft}
+                  value={intentDraft}
+                  onChange={setIntentDraft}
                 />
               }
             />
           </main>
           <aside className="hidden w-[360px] shrink-0 border-l xl:block">
-            <ControlPanel tonePresets={tonePresets} />
+            <ControlPanel intentDraft={intentDraft} />
           </aside>
         </div>
       </SidebarInset>
@@ -527,10 +632,66 @@ export default function Home() {
             >
               删除
             </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SidebarProvider>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+  <Dialog
+    open={Boolean(mirrorEditState)}
+    onOpenChange={(open) => {
+      if (!open) {
+        setMirrorEditState(null);
+        setMirrorEditDraft("");
+      }
+    }}
+  >
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>编辑意图</DialogTitle>
+        <DialogDescription>更新并保存右侧意图内容。</DialogDescription>
+      </DialogHeader>
+      <Textarea
+        placeholder="请输入新的意图内容…"
+        className="min-h-[160px]"
+        value={mirrorEditDraft}
+        onChange={(event) => setMirrorEditDraft(event.target.value)}
+      />
+      <DialogFooter>
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => {
+            setMirrorEditState(null);
+            setMirrorEditDraft("");
+          }}
+        >
+          取消
+        </Button>
+        <Button
+          type="button"
+          onClick={() => {
+            if (!mirrorEditState) return;
+            const trimmed = mirrorEditDraft.trim();
+            if (!trimmed) {
+              toast.error("意图内容不能为空");
+              return;
+            }
+            updateMirror(mirrorEditState.rowId, {
+              content: trimmed,
+              status: "ready",
+              error: null,
+            });
+            toast.success("意图已更新");
+            setMirrorEditState(null);
+            setMirrorEditDraft("");
+          }}
+          disabled={!mirrorEditDraft.trim()}
+        >
+          保存
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+</SidebarProvider>
   );
 }
 
@@ -617,11 +778,19 @@ function ConversationFeedCell({
   canEdit,
   onEdit,
   onDelete,
+  onRetry,
+  retryLabel,
+  onTranslate,
+  onCopy,
 }: {
   data: FeedCell;
   canEdit?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onRetry?: () => void;
+  retryLabel?: string;
+  onTranslate?: () => void;
+  onCopy?: () => void;
 }) {
   if (data.type === "message") {
     return (
@@ -630,6 +799,8 @@ function ConversationFeedCell({
         canEdit={canEdit}
         onEdit={onEdit}
         onDelete={onDelete}
+        onTranslate={onTranslate}
+        onCopy={onCopy}
       />
     );
   }
@@ -637,6 +808,9 @@ function ConversationFeedCell({
     <InsightBubble
       data={data}
       onDelete={onDelete}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+      onEdit={onEdit}
     />
   );
 }
@@ -646,11 +820,15 @@ function MessageBubble({
   canEdit,
   onEdit,
   onDelete,
+  onTranslate,
+  onCopy,
 }: {
   data: Extract<FeedCell, { type: "message" }>;
   canEdit?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onTranslate?: () => void;
+  onCopy?: () => void;
 }) {
   const isIncoming = data.direction === "incoming";
 
@@ -677,6 +855,8 @@ function MessageBubble({
         canEdit={canEdit}
         onEdit={onEdit}
         onDelete={onDelete}
+        onTranslate={isIncoming ? onTranslate : undefined}
+        onCopy={!isIncoming ? onCopy : undefined}
       />
     </div>
   );
@@ -685,11 +865,27 @@ function MessageBubble({
 function InsightBubble({
   data,
   onDelete,
+  onRetry,
+  retryLabel,
+  onEdit,
 }: {
   data: Extract<FeedCell, { type: "analysis" | "intent" }>;
   onDelete?: () => void;
+  onRetry?: () => void;
+  retryLabel?: string;
+  onEdit?: () => void;
 }) {
   const isIncoming = data.direction === "incoming";
+  const status = data.status ?? "ready";
+  const isLoading = status === "loading";
+  const isError = status === "error";
+  const content = (() => {
+    const trimmed = data.content.trim();
+    if (trimmed.length > 0) return data.content;
+    if (isLoading) return "生成中…";
+    if (isError) return data.error ?? "生成失败";
+    return "";
+  })();
 
   return (
     <div
@@ -703,11 +899,17 @@ function InsightBubble({
           "w-fit max-w-[min(760px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
           isIncoming
             ? "border-dashed bg-muted text-foreground"
-            : "border-dashed bg-card text-foreground"
+            : "border-dashed bg-card text-foreground",
+          isError && "border-destructive/60 text-destructive"
         )}
       >
-        {data.content}
-        {data.highlights && data.highlights.length > 0 ? (
+        {isLoading ? (
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在生成
+          </div>
+        ) : null}
+        <div>{content}</div>
+        {status === "ready" && data.highlights && data.highlights.length > 0 ? (
           <ul className="mt-2 list-disc space-y-1 pl-4 text-xs opacity-80">
             {data.highlights.map((item) => (
               <li key={item}>{item}</li>
@@ -719,6 +921,11 @@ function InsightBubble({
         align={isIncoming ? "start" : "end"}
         timestamp={data.timestamp}
         onDelete={onDelete}
+        onRetry={onRetry}
+        retryLabel={retryLabel}
+        isLoading={isLoading}
+        canEdit={data.type === "intent"}
+        onEdit={onEdit}
       />
     </div>
   );
@@ -730,12 +937,22 @@ function BubbleMeta({
   canEdit,
   onEdit,
   onDelete,
+  onRetry,
+  retryLabel,
+  isLoading,
+  onTranslate,
+  onCopy,
 }: {
   align: "start" | "end";
   timestamp: string;
   canEdit?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onRetry?: () => void;
+  retryLabel?: string;
+  isLoading?: boolean;
+  onTranslate?: () => void;
+  onCopy?: () => void;
 }) {
   return (
     <div
@@ -745,8 +962,20 @@ function BubbleMeta({
       )}
     >
       <span>{timestamp}</span>
-      {(canEdit || onDelete) && (
+      {(canEdit || onDelete || onRetry || onTranslate || onCopy) && (
         <div className="flex items-center gap-1">
+          {onTranslate ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onTranslate}
+            >
+              <Languages className="h-4 w-4" />
+              <span className="sr-only">翻译</span>
+            </Button>
+          ) : null}
           {canEdit && onEdit ? (
             <Button
               type="button"
@@ -757,6 +986,37 @@ function BubbleMeta({
             >
               <Pencil className="h-4 w-4" />
               <span className="sr-only">编辑</span>
+            </Button>
+          ) : null}
+          {onRetry ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onRetry}
+              disabled={isLoading}
+              title={retryLabel ?? "重新生成"}
+            >
+              <RefreshCcw
+                className={cn(
+                  "h-4 w-4",
+                  isLoading && "animate-spin"
+                )}
+              />
+              <span className="sr-only">{retryLabel ?? "重新生成"}</span>
+            </Button>
+          ) : null}
+          {onCopy ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onCopy}
+            >
+              <Copy className="h-4 w-4" />
+              <span className="sr-only">复制</span>
             </Button>
           ) : null}
           {onDelete ? (

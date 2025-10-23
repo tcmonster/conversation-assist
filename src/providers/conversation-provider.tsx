@@ -19,6 +19,8 @@ export type ConversationMirror = {
   content: string;
   timestamp: string;
   highlights?: string[];
+  status?: "idle" | "loading" | "ready" | "error";
+  error?: string | null;
 };
 
 export type ConversationFeedRow = {
@@ -34,6 +36,10 @@ export type Conversation = {
   pinnedAt: string | null;
   archivedAt: string | null;
   feed: ConversationFeedRow[];
+  replyLanguage: string;
+  tonePresetId: string;
+  selectedReferenceIds: string[];
+  selectedQuoteIds: string[];
 };
 
 type ConversationState = {
@@ -48,12 +54,34 @@ type ConversationAction =
   | { type: "togglePin"; id: string }
   | { type: "toggleArchive"; id: string }
   | { type: "rename"; id: string; title: string }
-  | { type: "addPartnerMessage"; conversationId: string; content: string }
+  | { type: "setReplyLanguage"; conversationId: string; replyLanguage: string }
+  | {
+      type: "setTonePreset";
+      conversationId: string;
+      tonePresetId: string;
+    }
+  | {
+      type: "setSelectedReferenceIds";
+      conversationId: string;
+      referenceIds: string[];
+    }
+  | {
+      type: "setSelectedQuoteIds";
+      conversationId: string;
+      quoteIds: string[];
+    }
+  | {
+      type: "addPartnerMessage";
+      conversationId: string;
+      content: string;
+      rowId?: string;
+    }
   | {
       type: "addSelfMessage";
       conversationId: string;
       content: string;
       intent?: string;
+      rowId?: string;
     }
   | {
       type: "updateMessage";
@@ -63,11 +91,22 @@ type ConversationAction =
       intent?: string;
     }
   | {
+      type: "updateMirror";
+      conversationId: string;
+      rowId: string;
+      mirror: Partial<ConversationMirror>;
+    }
+  | {
       type: "removeFeedRow";
       conversationId: string;
       rowId: string;
     }
-  | { type: "addIntentDraft"; conversationId: string; intent: string }
+  | {
+      type: "addIntentDraft";
+      conversationId: string;
+      intent: string;
+      rowId?: string;
+    }
   | { type: "delete"; id: string };
 
 type ConversationContextValue = {
@@ -80,15 +119,20 @@ type ConversationContextValue = {
   archivedConversations: Conversation[];
   createConversation: () => void;
   renameConversation: (id: string, title: string) => void;
-  addPartnerMessage: (content: string) => void;
-  addSelfMessage: (content: string, intent?: string) => void;
-  addIntentDraft: (intent: string) => void;
+  addPartnerMessage: (content: string) => string | undefined;
+  addSelfMessage: (content: string, intent?: string) => string | undefined;
+  addIntentDraft: (intent: string) => string | undefined;
   updateMessage: (rowId: string, content: string, options?: { intent?: string }) => void;
   removeFeedRow: (rowId: string) => void;
+  updateMirror: (rowId: string, mirror: Partial<ConversationMirror>) => void;
   setActiveConversation: (id: string) => void;
   togglePin: (id: string) => void;
   toggleArchive: (id: string) => void;
   deleteConversation: (id: string) => void;
+  setReplyLanguage: (replyLanguage: string) => void;
+  setTonePreset: (tonePresetId: string) => void;
+  setSelectedReferenceIds: (ids: string[]) => void;
+  setSelectedQuoteIds: (ids: string[]) => void;
 };
 
 const CONVERSATION_STORAGE = createStorageSlot<ConversationState>({
@@ -192,10 +236,11 @@ function appendFeedRow(
 function createPartnerFeedRow(params: {
   conversationId: string;
   content: string;
+  id?: string;
 }): ConversationFeedRow {
   const timestamp = new Date().toISOString();
   return {
-    id: createFeedRowId(params.conversationId),
+    id: params.id ?? createFeedRowId(params.conversationId),
     message: {
       role: "partner",
       content: params.content,
@@ -205,6 +250,8 @@ function createPartnerFeedRow(params: {
       type: "analysis",
       content: "",
       timestamp,
+      status: "idle",
+      error: null,
     },
   };
 }
@@ -213,10 +260,11 @@ function createSelfFeedRow(params: {
   conversationId: string;
   content: string;
   intent?: string;
+  id?: string;
 }): ConversationFeedRow {
   const timestamp = new Date().toISOString();
   return {
-    id: createFeedRowId(params.conversationId),
+    id: params.id ?? createFeedRowId(params.conversationId),
     message: {
       role: "self",
       content: params.content,
@@ -226,6 +274,8 @@ function createSelfFeedRow(params: {
       type: "intent",
       content: params.intent ?? "",
       timestamp,
+      status: "idle",
+      error: null,
     },
   };
 }
@@ -338,6 +388,33 @@ function normalizeConversation(input: unknown): Conversation | undefined {
     archivedAt:
       typeof candidate.archivedAt === "string" ? candidate.archivedAt : null,
     feed,
+    replyLanguage:
+      typeof (candidate as { replyLanguage?: unknown }).replyLanguage === "string" &&
+      (candidate as { replyLanguage?: string }).replyLanguage?.trim()
+        ? ((candidate as { replyLanguage?: string }).replyLanguage as string)
+        : "auto",
+    tonePresetId:
+      typeof (candidate as { tonePresetId?: unknown }).tonePresetId === "string"
+        ? ((candidate as { tonePresetId?: string }).tonePresetId as string)
+        : "concise",
+    selectedReferenceIds: Array.isArray(
+      (candidate as { selectedReferenceIds?: unknown }).selectedReferenceIds
+    )
+      ? dedupeIds(
+          ((candidate as { selectedReferenceIds?: string[] }).selectedReferenceIds ?? []).filter(
+            (item): item is string => typeof item === "string"
+          )
+        )
+      : [],
+    selectedQuoteIds: Array.isArray(
+      (candidate as { selectedQuoteIds?: unknown }).selectedQuoteIds
+    )
+      ? dedupeIds(
+          ((candidate as { selectedQuoteIds?: string[] }).selectedQuoteIds ?? []).filter(
+            (item): item is string => typeof item === "string"
+          )
+        )
+      : [],
   };
 }
 
@@ -403,6 +480,28 @@ function normalizeMirror(
         )
       : undefined;
 
+  const statusCandidate =
+    typeof (candidate as { status?: unknown }).status === "string"
+      ? ((candidate as { status?: string }).status as string)
+      : undefined;
+
+  const allowedStatuses: ConversationMirror["status"][] = [
+    "idle",
+    "loading",
+    "ready",
+    "error",
+  ];
+  const status = allowedStatuses.includes(statusCandidate as ConversationMirror["status"])
+    ? (statusCandidate as ConversationMirror["status"])
+    : candidate.content && candidate.content.trim().length > 0
+      ? "ready"
+      : "idle";
+
+  const errorMessage =
+    typeof (candidate as { error?: unknown }).error === "string"
+      ? ((candidate as { error?: string }).error as string)
+      : null;
+
   return {
     type: expectedType,
     content: candidate.content,
@@ -411,7 +510,19 @@ function normalizeMirror(
         ? candidate.timestamp
         : new Date().toISOString(),
     highlights,
+    status,
+    error: errorMessage,
   };
+}
+
+function dedupeIds(ids: string[]): string[] {
+  const seen = new Set<string>();
+  for (const id of ids) {
+    const trimmed = id.trim();
+    if (!trimmed) continue;
+    seen.add(trimmed);
+  }
+  return Array.from(seen);
 }
 
 function conversationReducer(
@@ -440,6 +551,10 @@ function conversationReducer(
         pinnedAt: null,
         archivedAt: null,
         feed: [],
+        replyLanguage: "auto",
+        tonePresetId: "concise",
+        selectedReferenceIds: [],
+        selectedQuoteIds: [],
       };
       return {
         activeId: id,
@@ -507,12 +622,97 @@ function conversationReducer(
         },
       };
     }
+    case "setReplyLanguage": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      if (conversation.replyLanguage === action.replyLanguage) {
+        return state;
+      }
+      const nextConversation: Conversation = {
+        ...conversation,
+        replyLanguage: action.replyLanguage,
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
+    case "setTonePreset": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      if (conversation.tonePresetId === action.tonePresetId) {
+        return state;
+      }
+      const nextConversation: Conversation = {
+        ...conversation,
+        tonePresetId: action.tonePresetId,
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
+    case "setSelectedReferenceIds": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      const nextIds = dedupeIds(action.referenceIds);
+      if (
+        nextIds.length === conversation.selectedReferenceIds.length &&
+        nextIds.every((id) => conversation.selectedReferenceIds.includes(id))
+      ) {
+        return state;
+      }
+      const nextConversation: Conversation = {
+        ...conversation,
+        selectedReferenceIds: nextIds,
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
+    case "setSelectedQuoteIds": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      const nextIds = dedupeIds(action.quoteIds);
+      if (
+        nextIds.length === conversation.selectedQuoteIds.length &&
+        nextIds.every((id) => conversation.selectedQuoteIds.includes(id))
+      ) {
+        return state;
+      }
+      const nextConversation: Conversation = {
+        ...conversation,
+        selectedQuoteIds: nextIds,
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
     case "addPartnerMessage": {
       const conversation = state.conversations[action.conversationId];
       if (!conversation) return state;
       const row = createPartnerFeedRow({
         conversationId: conversation.id,
         content: action.content,
+        id: action.rowId,
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
@@ -530,6 +730,7 @@ function conversationReducer(
         conversationId: conversation.id,
         content: action.content,
         intent: action.intent,
+        id: action.rowId,
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
@@ -548,6 +749,7 @@ function conversationReducer(
         conversationId: conversation.id,
         content: "（待生成回复）",
         intent: intentContent || "（未填写意图）",
+        id: action.rowId,
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
@@ -598,6 +800,38 @@ function conversationReducer(
             };
           }
           return nextRow;
+        }
+      );
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: nextConversation,
+        },
+      };
+    }
+    case "updateMirror": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      const targetRow = conversation.feed.find((row) => row.id === action.rowId);
+      if (!targetRow) return state;
+      const nextConversation = updateFeedRow(
+        conversation,
+        action.rowId,
+        (row) => {
+          const nextMirror: ConversationMirror = {
+            type: row.mirror?.type ?? (row.message.role === "partner" ? "analysis" : "intent"),
+            content: row.mirror?.content ?? "",
+            timestamp: new Date().toISOString(),
+            highlights: row.mirror?.highlights,
+            status: row.mirror?.status ?? "idle",
+            error: row.mirror?.error ?? null,
+            ...action.mirror,
+          };
+          return {
+            ...row,
+            mirror: nextMirror,
+          };
         }
       );
       return {
@@ -754,27 +988,40 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         dispatch({ type: "rename", id, title }),
       addPartnerMessage: (content: string) => {
         const targetId = state.activeId;
-        if (!targetId) return;
-        dispatch({ type: "addPartnerMessage", conversationId: targetId, content });
+        if (!targetId) return undefined;
+        const rowId = createFeedRowId(targetId);
+        dispatch({
+          type: "addPartnerMessage",
+          conversationId: targetId,
+          content,
+          rowId,
+        });
+        return rowId;
       },
       addSelfMessage: (content: string, intent?: string) => {
         const targetId = state.activeId;
-        if (!targetId) return;
+        if (!targetId) return undefined;
+        const rowId = createFeedRowId(targetId);
         dispatch({
           type: "addSelfMessage",
           conversationId: targetId,
           content,
           intent,
+          rowId,
         });
+        return rowId;
       },
       addIntentDraft: (intent: string) => {
         const targetId = state.activeId;
-        if (!targetId) return;
+        if (!targetId) return undefined;
+        const rowId = createFeedRowId(targetId);
         dispatch({
           type: "addIntentDraft",
           conversationId: targetId,
           intent,
+          rowId,
         });
+        return rowId;
       },
       updateMessage: (rowId: string, content: string, options) => {
         const targetId = state.activeId;
@@ -785,6 +1032,16 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
           rowId,
           content,
           intent: options?.intent,
+        });
+      },
+      updateMirror: (rowId: string, mirror) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "updateMirror",
+          conversationId: targetId,
+          rowId,
+          mirror,
         });
       },
       removeFeedRow: (rowId: string) => {
@@ -800,6 +1057,42 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       togglePin: (id: string) => dispatch({ type: "togglePin", id }),
       toggleArchive: (id: string) => dispatch({ type: "toggleArchive", id }),
       deleteConversation: (id: string) => dispatch({ type: "delete", id }),
+      setReplyLanguage: (replyLanguage: string) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "setReplyLanguage",
+          conversationId: targetId,
+          replyLanguage,
+        });
+      },
+      setTonePreset: (tonePresetId: string) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "setTonePreset",
+          conversationId: targetId,
+          tonePresetId,
+        });
+      },
+      setSelectedReferenceIds: (ids: string[]) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "setSelectedReferenceIds",
+          conversationId: targetId,
+          referenceIds: ids,
+        });
+      },
+      setSelectedQuoteIds: (ids: string[]) => {
+        const targetId = state.activeId;
+        if (!targetId) return;
+        dispatch({
+          type: "setSelectedQuoteIds",
+          conversationId: targetId,
+          quoteIds: ids,
+        });
+      },
     }),
     [
       activeConversation,

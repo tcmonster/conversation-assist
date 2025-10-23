@@ -1,107 +1,49 @@
+"use client";
+
+import * as React from "react";
+import { Eye } from "lucide-react";
+import { toast } from "sonner";
+
+import { useAiWorkflow } from "@/hooks/use-ai-workflow";
+import { useConversations } from "@/providers/conversation-provider";
+import { useSettings } from "@/providers/settings-provider";
+import { TONE_PROMPTS, type ToneKey } from "@/prompts";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye } from "lucide-react";
-import * as React from "react";
+
+const LANGUAGE_OPTIONS = [
+  { value: "auto", label: "匹配对方语言" },
+  { value: "zh-CN", label: "中文 (zh-CN)" },
+  { value: "en-US", label: "English (en-US)" },
+  { value: "ja-JP", label: "日本語 (ja-JP)" },
+];
 
 type ControlPanelProps = {
-  tonePresets?: string[];
+  intentDraft?: string;
 };
 
-// 模拟数据 - AI 参考上下文选项
-const aiReferenceContexts = [
-  { id: "company-background", label: "公司背景信息", defaultChecked: true },
-  { id: "project-history", label: "项目历史记录" },
-  { id: "client-preferences", label: "客户偏好设置" },
-  { id: "industry-knowledge", label: "行业知识库" },
-];
-
-// 模拟数据 - AI 引用上下文选项
-const aiQuoteContexts = [
-  { id: "previous-messages", label: "历史消息记录", defaultChecked: true },
-  { id: "related-documents", label: "相关文档" },
-  { id: "team-notes", label: "团队备注" },
-  { id: "external-sources", label: "外部参考" },
-];
-
-export function ControlPanel({ tonePresets }: ControlPanelProps) {
-  return (
-    <div className="flex h-full flex-col overflow-y-auto p-4 bg-neutral-50 relative">
-      <div className="flex flex-col gap-6 pb-16">
-        {/* Section 1: AI 参考上下文 */}
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Reference Information</h3>
-            <p className="text-xs text-muted-foreground">
-              选择 AI 生成回复时参考的背景信息
-            </p>
-          </div>
-          <SelectionCard
-            items={aiReferenceContexts}
-            badgeText="Info"
-            badgeVariant="secondary"
-            badgeColor="blue"
-          />
-        </div>
-
-        {/* Section 2: AI 引用上下文 */}
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Quoted Text</h3>
-            <p className="text-xs text-muted-foreground">
-              选择 AI 可以直接引用和提及的内容
-            </p>
-          </div>
-          <SelectionCard
-            items={aiQuoteContexts.map(item => ({ ...item, id: `quote-${item.id}` }))}
-            badgeText="Quote"
-            badgeVariant="secondary"
-            badgeColor="green"
-          />
-        </div>
-
-        {/* Section 3: AI 语气选择（仅在提供 tonePresets 时显示） */}
-        {tonePresets && tonePresets.length > 0 ? (
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold">Style</h3>
-              <p className="text-xs text-muted-foreground">选择回复的语气和风格</p>
-            </div>
-            <Tabs defaultValue={tonePresets[0]} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                {tonePresets.map((preset) => (
-                  <TabsTrigger key={preset} value={preset} className="text-xs">
-                    {preset}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-        ) : null}
-      </div>
-
-      {/* 预览按钮 - 固定在底部右下角 */}
-      <div className="absolute bottom-4 right-4">
-        <Button variant="ghost" size="sm" className="text-xs">
-          <Eye className="mr-2 h-3.5 w-3.5" />
-          预览 Prompt
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// 可复用的选择卡片组件
 type SelectionItem = {
   id: string;
   label: string;
-  defaultChecked?: boolean;
+  description?: string;
+  checked: boolean;
 };
 
 type SelectionCardProps = {
@@ -111,7 +53,256 @@ type SelectionCardProps = {
   badgeColor?: "blue" | "green" | "amber" | "purple" | "rose" | "gray";
   maxHeight?: string;
   className?: string;
+  disabled?: boolean;
+  onToggle?: (id: string, checked: boolean) => void;
 };
+
+const TONE_OPTIONS = Object.entries(TONE_PROMPTS).map(([key, value]) => ({
+  id: key as ToneKey,
+  label: value.label,
+}));
+
+export function ControlPanel({ intentDraft }: ControlPanelProps) {
+  const { settings } = useSettings();
+  const {
+    activeConversation,
+    setSelectedReferenceIds,
+    setSelectedQuoteIds,
+    setReplyLanguage,
+    setTonePreset,
+  } = useConversations();
+  const { buildReplyPromptPreview } = useAiWorkflow();
+
+  const [isPreviewOpen, setPreviewOpen] = React.useState(false);
+  const [previewJson, setPreviewJson] = React.useState("");
+
+  const referenceItems = React.useMemo<SelectionItem[]>(() => {
+    const selectedIds = activeConversation?.selectedReferenceIds ?? [];
+    return settings.references.map((item) => {
+      const summary = item.content.trim();
+      return {
+        id: item.id,
+        label: item.title,
+        description:
+          summary.length > 0
+            ? summary.slice(0, 48) + (summary.length > 48 ? "…" : "")
+            : undefined,
+        checked: selectedIds.includes(item.id),
+      };
+    });
+  }, [activeConversation?.selectedReferenceIds, settings.references]);
+
+  const quoteItems = React.useMemo<SelectionItem[]>(() => {
+    const selectedIds = activeConversation?.selectedQuoteIds ?? [];
+    return settings.quotes.map((item) => {
+      const summary = item.content.trim();
+      return {
+        id: item.id,
+        label: item.title,
+        description:
+          summary.length > 0
+            ? summary.slice(0, 48) + (summary.length > 48 ? "…" : "")
+            : undefined,
+        checked: selectedIds.includes(item.id),
+      };
+    });
+  }, [activeConversation?.selectedQuoteIds, settings.quotes]);
+
+  const handleToggleReference = React.useCallback(
+    (id: string, checked: boolean) => {
+      if (!activeConversation) return;
+      const base = activeConversation.selectedReferenceIds;
+      const next = checked
+        ? Array.from(new Set([...base, id]))
+        : base.filter((item) => item !== id);
+      setSelectedReferenceIds(next);
+    },
+    [activeConversation, setSelectedReferenceIds]
+  );
+
+  const handleToggleQuote = React.useCallback(
+    (id: string, checked: boolean) => {
+      if (!activeConversation) return;
+      const base = activeConversation.selectedQuoteIds;
+      const next = checked
+        ? Array.from(new Set([...base, id]))
+        : base.filter((item) => item !== id);
+      setSelectedQuoteIds(next);
+    },
+    [activeConversation, setSelectedQuoteIds]
+  );
+
+  const handleToneChange = React.useCallback(
+    (value: string) => {
+      if (!activeConversation) return;
+      setTonePreset(value as ToneKey);
+    },
+    [activeConversation, setTonePreset]
+  );
+
+  const toneValue = React.useMemo(() => {
+    return activeConversation?.tonePresetId ?? "concise";
+  }, [activeConversation?.tonePresetId]);
+
+  const handlePreview = React.useCallback(() => {
+    try {
+      const { json } = buildReplyPromptPreview({ draftIntent: intentDraft });
+      setPreviewJson(json);
+      setPreviewOpen(true);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "无法生成 Prompt";
+      toast.error("无法生成 Prompt", {
+        description: message,
+      });
+    }
+  }, [buildReplyPromptPreview, intentDraft]);
+
+  const handleCopyPreview = React.useCallback(() => {
+    if (!previewJson) return;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard
+        .writeText(previewJson)
+        .then(() => {
+          toast.success("已复制 Prompt JSON");
+        })
+        .catch(() => {
+          toast.error("复制失败", {
+            description: "浏览器未授予剪贴板权限",
+          });
+        });
+    }
+  }, [previewJson]);
+
+  const replyLanguage = activeConversation?.replyLanguage ?? "auto";
+
+  return (
+    <div className="relative flex h-full flex-col overflow-y-auto bg-neutral-50 p-4">
+      <div className="flex flex-col gap-6 pb-20">
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Reply Language</h3>
+            <p className="text-xs text-muted-foreground">
+              选择生成回复时使用的语言
+            </p>
+          </div>
+          <Select
+            value={replyLanguage}
+            onValueChange={setReplyLanguage}
+            disabled={!activeConversation}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue placeholder="选择语言" />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Reference Information</h3>
+            <p className="text-xs text-muted-foreground">
+              勾选需要注入的背景资料
+            </p>
+          </div>
+          <SelectionCard
+            items={referenceItems}
+            badgeText="Info"
+            badgeVariant="secondary"
+            badgeColor="blue"
+            disabled={!activeConversation}
+            onToggle={handleToggleReference}
+          />
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Quoted Text</h3>
+            <p className="text-xs text-muted-foreground">
+              选择可直接引用的语料
+            </p>
+          </div>
+          <SelectionCard
+            items={quoteItems}
+            badgeText="Quote"
+            badgeVariant="secondary"
+            badgeColor="green"
+            disabled={!activeConversation}
+            onToggle={handleToggleQuote}
+          />
+        </section>
+
+        {TONE_OPTIONS.length > 0 ? (
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Style</h3>
+              <p className="text-xs text-muted-foreground">配置回复语气</p>
+            </div>
+            <Tabs
+              value={toneValue}
+              onValueChange={handleToneChange}
+              className="w-full"
+            >
+              <TabsList className="grid w-full grid-cols-3">
+                {TONE_OPTIONS.map((tone) => (
+                  <TabsTrigger
+                    key={tone.id}
+                    value={tone.id}
+                    className="text-xs"
+                  >
+                    {tone.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </section>
+        ) : null}
+      </div>
+
+      <div className="absolute bottom-4 right-4 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs"
+          onClick={handlePreview}
+          disabled={!activeConversation}
+        >
+          <Eye className="mr-2 h-3.5 w-3.5" />
+          预览 Prompt
+        </Button>
+      </div>
+
+      <Dialog open={isPreviewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-[90vw] lg:max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>Prompt 预览</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <pre className="max-h-[70vh] overflow-y-auto overflow-x-auto rounded-md bg-muted p-4 text-xs leading-relaxed whitespace-pre-wrap break-words">
+              {previewJson}
+            </pre>
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCopyPreview}
+                disabled={!previewJson}
+              >
+                复制 JSON
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 function SelectionCard({
   items,
@@ -120,8 +311,13 @@ function SelectionCard({
   badgeColor = "blue",
   maxHeight = "max-h-48",
   className,
+  disabled,
+  onToggle,
 }: SelectionCardProps) {
-  const colorClassMap: Record<NonNullable<SelectionCardProps["badgeColor"]>, string> = {
+  const colorClassMap: Record<
+    NonNullable<SelectionCardProps["badgeColor"]>,
+    string
+  > = {
     blue: "bg-blue-100 text-blue-700 border-blue-200",
     green: "bg-green-100 text-green-700 border-green-200",
     amber: "bg-amber-100 text-amber-800 border-amber-200",
@@ -130,25 +326,50 @@ function SelectionCard({
     gray: "bg-gray-100 text-gray-700 border-gray-200",
   };
   const colorClasses = colorClassMap[badgeColor];
+
   return (
-    <Card className={`${maxHeight} overflow-y-auto py-2 shadow-none ${className || ""}`}>
-      <CardContent className="px-4 py-2 space-y-2">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center space-x-2">
-            <Checkbox id={item.id} defaultChecked={item.defaultChecked} />
-            <Badge variant={badgeVariant} className={`text-xs ${colorClasses}`}>
-              {badgeText}
-            </Badge>
-            <Label
-              htmlFor={item.id}
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-1"
-            >
-              {item.label}
-            </Label>
-          </div>
-        ))}
+    <Card
+      className={`${maxHeight} overflow-y-auto py-2 shadow-none ${
+        className || ""
+      }`}
+    >
+      <CardContent className="space-y-2 px-4 py-2">
+        {items.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            暂无可用条目
+          </p>
+        ) : (
+          items.map((item) => (
+            <div key={item.id} className="flex items-start gap-2">
+              <Checkbox
+                id={item.id}
+                checked={item.checked}
+                disabled={disabled}
+                onCheckedChange={(value) => onToggle?.(item.id, Boolean(value))}
+              />
+              <Badge
+                variant={badgeVariant}
+                className={`mt-0.5 h-5 text-xs ${colorClasses}`}
+              >
+                {badgeText}
+              </Badge>
+              <div className="flex-1">
+                <Label
+                  htmlFor={item.id}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  {item.label}
+                </Label>
+                {item.description ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {item.description}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
       </CardContent>
     </Card>
   );
 }
-

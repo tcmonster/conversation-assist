@@ -472,7 +472,7 @@ function ContextTable({
                   <TableCell className="font-medium">
                     {item.title ? item.title : "（未命名）"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="max-w-[420px] whitespace-pre-wrap break-words text-sm text-muted-foreground">
                     {getContentPreview(item.content)}
                   </TableCell>
                   <TableCell className="text-right">

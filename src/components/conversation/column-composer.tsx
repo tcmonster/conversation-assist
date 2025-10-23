@@ -15,10 +15,12 @@ type ColumnComposerProps = {
   primaryActionLabel: string;
   secondaryActionLabel?: string;
   defaultValue?: string;
+  value?: string;
   className?: string;
   disabled?: boolean;
   onPrimaryAction?: ActionHandler;
   onSecondaryAction?: ActionHandler;
+  onChange?: (value: string) => void;
 };
 
 export function ColumnComposer({
@@ -27,17 +29,32 @@ export function ColumnComposer({
   primaryActionLabel,
   secondaryActionLabel,
   defaultValue,
+  value: controlledValue,
   className,
   disabled,
   onPrimaryAction,
   onSecondaryAction,
+  onChange,
 }: ColumnComposerProps) {
-  const [value, setValue] = React.useState(defaultValue ?? "");
+  const isControlled = controlledValue !== undefined;
+  const [uncontrolledValue, setUncontrolledValue] = React.useState(
+    defaultValue ?? ""
+  );
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
+  const value = isControlled ? controlledValue ?? "" : uncontrolledValue;
+
   React.useEffect(() => {
-    setValue(defaultValue ?? "");
-  }, [defaultValue]);
+    if (!isControlled) {
+      setUncontrolledValue(defaultValue ?? "");
+    }
+  }, [defaultValue, isControlled]);
+
+  React.useEffect(() => {
+    if (isControlled && controlledValue === undefined) {
+      onChange?.("");
+    }
+  }, [controlledValue, isControlled, onChange]);
 
   const focusTextarea = React.useCallback(() => {
     textareaRef.current?.focus();
@@ -47,19 +64,27 @@ export function ColumnComposer({
     if (!onPrimaryAction || disabled) return;
     const result = await onPrimaryAction(value);
     if (result !== false) {
-      setValue("");
+      if (isControlled) {
+        onChange?.("");
+      } else {
+        setUncontrolledValue("");
+      }
     }
     focusTextarea();
-  }, [disabled, focusTextarea, onPrimaryAction, value]);
+  }, [disabled, focusTextarea, isControlled, onPrimaryAction, onChange, value]);
 
   const handleSecondary = React.useCallback(async () => {
     if (!onSecondaryAction || disabled) return;
     const result = await onSecondaryAction(value);
     if (result !== false) {
-      setValue("");
+      if (isControlled) {
+        onChange?.("");
+      } else {
+        setUncontrolledValue("");
+      }
     }
     focusTextarea();
-  }, [disabled, focusTextarea, onSecondaryAction, value]);
+  }, [disabled, focusTextarea, isControlled, onChange, onSecondaryAction, value]);
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -84,7 +109,13 @@ export function ColumnComposer({
         className="min-h-[120px] resize-none text-sm"
         value={value}
         disabled={disabled}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          if (isControlled) {
+            onChange?.(event.target.value);
+          } else {
+            setUncontrolledValue(event.target.value);
+          }
+        }}
         onKeyDown={handleKeyDown}
       />
       <div className="flex items-center justify-end gap-2">
