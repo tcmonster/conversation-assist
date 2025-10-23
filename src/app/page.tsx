@@ -1,12 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useRef } from "react";
+import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { ColumnComposer } from "@/components/conversation/column-composer";
 import { ColumnHeader } from "@/components/conversation/column-header";
 import { ControlPanel } from "@/components/conversation/control-panel";
 import { AppSidebar } from "@/components/app-sidebar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -17,12 +20,23 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useConversations } from "@/providers/conversation-provider";
+import type {
+  Conversation,
+  ConversationFeedRow,
+} from "@/providers/conversation-provider";
 import { cn } from "@/lib/utils";
-
-const activeConversation = {
-  id: "acme-rfp",
-  title: "Acme Corp. RFP 跟进",
-};
 
 const tonePresets = ["商务稳健", "友好礼貌", "简洁直接"];
 
@@ -41,141 +55,184 @@ type FeedCell =
       highlights?: string[];
     };
 
-type ConversationFeedRow = {
+type FeedRow = {
   id: string;
-  left?: FeedCell;
-  right?: FeedCell;
+  left: FeedCell;
+  right: FeedCell;
 };
 
-const conversationFeedRows: ConversationFeedRow[] = [
-  {
-    id: "row-01",
+const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  hourCycle: "h23",
+});
+
+function formatTimeLabel(timestamp: string) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return timeFormatter.format(date);
+}
+
+function toFeedRow(row: ConversationFeedRow): FeedRow | null {
+  if (!row || !row.message || !row.mirror) {
+    return null;
+  }
+  const direction = row.message.role === "partner" ? "incoming" : "outgoing";
+
+  return {
+    id: row.id,
     left: {
       type: "message",
-      direction: "incoming",
-      timestamp: "09:10",
-      content:
-        "Hi Iris,\nThanks for sending over the initial scope. Before we finalize the paperwork, could you share a detailed delivery timeline and a breakdown of the engineering effort?",
+      direction,
+      timestamp: formatTimeLabel(row.message.timestamp),
+      content: row.message.content,
     },
     right: {
-      type: "analysis",
-      direction: "incoming",
-      timestamp: "09:10",
-      content:
-        "翻译：嗨 Iris，请在签约前提供完整的交付时间表和工程投入拆解，以确认能否与设计并行。\n重点：需排期详情与工程角色/人天拆分。",
+      type: row.mirror.type,
+      direction,
+      timestamp: formatTimeLabel(row.mirror.timestamp),
+      content: row.mirror.content,
+      highlights: row.mirror.highlights,
     },
-  },
-  {
-    id: "row-02",
-    left: {
-      type: "message",
-      direction: "incoming",
-      timestamp: "09:18",
-      content:
-        "Also, could you confirm whether design assets will be delivered in parallel or sequentially?",
-    },
-    right: {
-      type: "analysis",
-      direction: "incoming",
-      timestamp: "09:18",
-      content:
-        "翻译：请确认设计资产是与开发并行还是顺序交付。\n重点：明确设计交付依赖，避免排期冲突。",
-    },
-  },
-  {
-    id: "row-03",
-    left: {
-      type: "message",
-      direction: "outgoing",
-      timestamp: "09:32",
-      content:
-        "Hi Michael,\n\n我们正在汇总排期与工程投入明细，预计周三前同步标准方案与可加速选项。如需加速，我们会提前确认资源增配与预算影响。\n\nBest regards,\nIris",
-    },
-    right: {
-      type: "intent",
-      direction: "outgoing",
-      timestamp: "09:32",
-      content:
-        "回复意图：\n- 同步标准与加速两套排期\n- 说明资源增配与预算确认流程\n- 维持专业积极语气",
-    },
-  },
-  {
-    id: "row-04",
-    left: {
-      type: "message",
-      direction: "outgoing",
-      timestamp: "09:33",
-      content:
-        "Deliverables will include milestone-based progress demos and a weekly status recap to keep stakeholders aligned.",
-    },
-    right: {
-      type: "intent",
-      direction: "outgoing",
-      timestamp: "09:33",
-      content: "补充意图：\n- 给出里程碑交付物\n- 每周同步状态以确保对齐",
-    },
-  },
-  {
-    id: "row-05",
-    left: {
-      type: "message",
-      direction: "incoming",
-      timestamp: "09:38",
-      content:
-        "That sounds good. Please share any assumptions you're making about backend readiness so we can flag blockers early.",
-    },
-    right: {
-      type: "analysis",
-      direction: "incoming",
-      timestamp: "09:38",
-      content:
-        "翻译：请提供对后端就绪度的假设，以便提前发现阻塞。\n重点：列出依赖和风险提示。",
-    },
-  },
-  {
-    id: "row-06",
-    left: {
-      type: "message",
-      direction: "outgoing",
-      timestamp: "09:50",
-      content:
-        "We'll align with your backend owners today and follow up with a shared risk log in the proposal deck.",
-    },
-    right: {
-      type: "intent",
-      direction: "outgoing",
-      timestamp: "09:50",
-      content: "行动意图：\n- 与后端负责人确认依赖\n- 在提案中附上风险清单",
-    },
-  },
-  {
-    id: "row-07",
-    left: {
-      type: "message",
-      direction: "incoming",
-      timestamp: "10:05",
-      content:
-        "Great, appreciate the proactive planning. Looking forward to the draft by Wednesday.",
-    },
-    right: {
-      type: "analysis",
-      direction: "incoming",
-      timestamp: "10:05",
-      content:
-        "翻译：感谢主动规划，期待周三前的方案草稿。\n重点：确认节点并保持沟通节奏。",
-    },
-  },
-];
+  };
+}
+
+function toFeedRows(conversation?: Conversation | null): FeedRow[] {
+  if (!conversation) return [];
+  return conversation.feed
+    .map((row) => toFeedRow(row))
+    .filter((row): row is FeedRow => Boolean(row));
+}
 
 export default function Home() {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const {
+    activeConversation,
+    isHydrated,
+    toggleArchive,
+    deleteConversation,
+    renameConversation,
+    addPartnerMessage,
+    addSelfMessage,
+    addIntentDraft,
+  } = useConversations();
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
 
-  // 页面加载时自动滚动到底部
-  useEffect(() => {
+  const feedRows = React.useMemo(
+    () => toFeedRows(activeConversation),
+    [activeConversation]
+  );
+
+  React.useEffect(() => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      scrollContainerRef.current.scrollTop =
+        scrollContainerRef.current.scrollHeight;
     }
-  }, []);
+  }, [activeConversation?.id, feedRows.length]);
+
+  React.useEffect(() => {
+    if (!activeConversation) {
+      setDeleteDialogOpen(false);
+    }
+  }, [activeConversation]);
+
+  const archiveLabel = activeConversation?.archivedAt ? "取消归档" : "归档";
+  const ArchiveButtonIcon = activeConversation?.archivedAt
+    ? ArchiveRestore
+    : Archive;
+
+  const handleArchiveToggle = React.useCallback(() => {
+    if (!activeConversation) return;
+    toggleArchive(activeConversation.id);
+  }, [activeConversation, toggleArchive]);
+
+  const handleConfirmDelete = React.useCallback(() => {
+    if (!activeConversation) return;
+    deleteConversation(activeConversation.id);
+    setDeleteDialogOpen(false);
+  }, [activeConversation, deleteConversation]);
+
+  const matrixRows = React.useMemo(() => {
+    if (!activeConversation) {
+      return [
+        {
+          id: "empty",
+          left: <EmptyFeedCell message="暂无会话, 请在左侧新建" />,
+          right: <EmptyFeedCell message="暂无意图" />,
+        },
+      ];
+    }
+
+    if (feedRows.length === 0) {
+      return [
+        {
+          id: `${activeConversation.id}-empty`,
+          left: <EmptyFeedCell message="暂无消息" />,
+          right: <EmptyFeedCell message="暂无意图" />,
+        },
+      ];
+    }
+
+    return feedRows.map((row) => ({
+      id: row.id,
+      left: <ConversationFeedCell data={row.left} />,
+      right: <ConversationFeedCell data={row.right} />,
+    }));
+  }, [activeConversation, feedRows]);
+
+  const handleAddPartnerMessage = React.useCallback(
+    async (raw: string) => {
+      if (!activeConversation) {
+        toast.error("请选择会话后再记录消息");
+        return false;
+      }
+      const content = raw.trim();
+      if (!content) {
+        toast.error("请输入对方消息内容");
+        return false;
+      }
+      addPartnerMessage(content);
+      toast.success("已记录对方消息");
+      return true;
+    },
+    [activeConversation, addPartnerMessage]
+  );
+
+  const handleAddSelfMessage = React.useCallback(
+    async (raw: string) => {
+      if (!activeConversation) {
+        toast.error("请选择会话后再记录消息");
+        return false;
+      }
+      const content = raw.trim();
+      if (!content) {
+        toast.error("请输入我方消息内容");
+        return false;
+      }
+      addSelfMessage(content);
+      toast.success("已记录我方消息");
+      return true;
+    },
+    [activeConversation, addSelfMessage]
+  );
+
+  const handleGenerateReply = React.useCallback(
+    async (raw: string) => {
+      if (!activeConversation) {
+        toast.error("请选择会话后再生成回复");
+        return false;
+      }
+      addIntentDraft(raw);
+      toast.success("已生成意图记录");
+      return true;
+    },
+    [activeConversation, addIntentDraft]
+  );
+
+  const handleClearDraft = React.useCallback(async () => true, []);
 
   return (
     <SidebarProvider>
@@ -187,12 +244,67 @@ export default function Home() {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <span className="text-sm font-semibold text-foreground">
-                    {activeConversation.title}
-                  </span>
+                  {activeConversation ? (
+                    <EditableConversationTitle
+                      key={activeConversation.id}
+                      title={activeConversation.title}
+                      onSubmit={(nextTitle) =>
+                        renameConversation(activeConversation.id, nextTitle)
+                      }
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold text-foreground">
+                      暂无会话
+                    </span>
+                  )}
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              onClick={handleArchiveToggle}
+              disabled={!activeConversation}
+            >
+              <ArchiveButtonIcon className="h-4 w-4" />
+              {archiveLabel}
+            </Button>
+            <AlertDialog
+              open={isDeleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-destructive"
+                  disabled={!activeConversation}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删除
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>确认删除会话?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    删除后将移除此会话的全部消息与意图,操作不可撤销。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={handleConfirmDelete}
+                  >
+                    确认删除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </header>
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -200,47 +312,37 @@ export default function Home() {
             <SectionRow
               className="shrink-0"
               left={
-                <ColumnHeader
-                  title="Conversation"
-                  description="实际会话内容"
-                />
+                <ColumnHeader title="Conversation" description="实际会话内容" />
               }
-              right={
-                <ColumnHeader
-                  title="Intention"
-                  description="对话意图"
-                />
-              }
+              right={<ColumnHeader title="Intention" description="对话意图" />}
             />
             <SectionRow
               variant="matrix"
               className="flex-1 min-h-0 overflow-hidden"
               gridClassName="h-full overflow-y-auto py-4"
               gridProps={{ ref: scrollContainerRef }}
-              rows={conversationFeedRows.map((row) => ({
-                id: row.id,
-                left: row.left ? (
-                  <ConversationFeedCell data={row.left} />
-                ) : null,
-                right: row.right ? (
-                  <ConversationFeedCell data={row.right} />
-                ) : null,
-              }))}
+              rows={matrixRows}
             />
             <SectionRow
               className="shrink-0"
               left={
                 <ColumnComposer
-                  placeholder="在此记录下一步要发送的回复草稿…"
-                  primaryActionLabel="添加消息"
-                  secondaryActionLabel="清空"
+                  placeholder="记录收到的消息或我方回复…"
+                  primaryActionLabel="记录对方消息"
+                  secondaryActionLabel="记录我方消息"
+                  disabled={!isHydrated || !activeConversation}
+                  onPrimaryAction={handleAddPartnerMessage}
+                  onSecondaryAction={handleAddSelfMessage}
                 />
               }
               right={
                 <ColumnComposer
                   placeholder="写下想强调的回复意图或提醒事项…"
                   primaryActionLabel="生成回复"
-                  secondaryActionLabel="保存意图"
+                  secondaryActionLabel="清空"
+                  disabled={!isHydrated || !activeConversation}
+                  onPrimaryAction={handleGenerateReply}
+                  onSecondaryAction={handleClearDraft}
                 />
               }
             />
@@ -254,10 +356,80 @@ export default function Home() {
   );
 }
 
-function EmptyFeedCell() {
+function EditableConversationTitle({
+  title,
+  onSubmit,
+}: {
+  title: string;
+  onSubmit: (value: string) => void;
+}) {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [value, setValue] = React.useState(title);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setValue(title);
+  }, [title]);
+
+  React.useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
+  const commit = React.useCallback(() => {
+    const trimmed = value.trim();
+    setIsEditing(false);
+    if (trimmed === title.trim()) {
+      setValue(title);
+      return;
+    }
+    onSubmit(trimmed);
+  }, [onSubmit, title, value]);
+
+  const cancel = React.useCallback(() => {
+    setValue(title);
+    setIsEditing(false);
+  }, [title]);
+
+  if (!isEditing) {
+    return (
+      <button
+        type="button"
+        className="rounded-sm px-1 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        onClick={() => setIsEditing(true)}
+        aria-label="重命名会话"
+      >
+        {title}
+      </button>
+    );
+  }
+
   return (
-    <div className="flex min-h-[88px] items-center justify-center rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 text-xs text-muted-foreground">
-      暂无内容
+    <Input
+      ref={inputRef}
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        }
+      }}
+      className="h-8 w-[220px] text-sm"
+    />
+  );
+}
+
+function EmptyFeedCell({ message = "暂无内容" }: { message?: string }) {
+  return (
+    <div className="flex min-h-[88px] items-center justify-center rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 px-3 text-center text-xs text-muted-foreground">
+      {message}
     </div>
   );
 }
@@ -285,7 +457,7 @@ function MessageBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(520px,85%)] rounded-2xl border px-4 py-3",
+          "w-fit max-w-[min(760px,85%)] rounded-2xl border px-4 py-3",
           isIncoming
             ? "border-border text-foreground"
             : "bg-neutral-900 text-background"
@@ -321,7 +493,7 @@ function InsightBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(520px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
+          "w-fit max-w-[min(760px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
           isIncoming
             ? "border-dashed bg-muted text-foreground"
             : "border-dashed bg-card text-foreground"

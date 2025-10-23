@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-const STORAGE_KEY = "conversation-assist.settings.v1";
+import { createStorageSlot } from "@/lib/storage";
 
 export type ModelSettings = {
   baseUrl: string;
@@ -40,6 +40,11 @@ export const DEFAULT_SETTINGS: SettingsState = {
   quotes: [],
 };
 
+const SETTINGS_STORAGE = createStorageSlot<SettingsState>({
+  key: "conversation-assist.settings.v1",
+  parser: (raw) => safeParseSettings(raw),
+});
+
 type SettingsContextValue = {
   settings: SettingsState;
   setSettings: React.Dispatch<React.SetStateAction<SettingsState>>;
@@ -51,8 +56,7 @@ const SettingsContext = React.createContext<SettingsContextValue | undefined>(
   undefined
 );
 
-function safeParseSettings(raw: string | null): SettingsState | undefined {
-  if (!raw) return undefined;
+function safeParseSettings(raw: string): SettingsState | undefined {
   try {
     const parsed = JSON.parse(raw) as Partial<SettingsState> & {
       models?: Partial<ModelSettings> & { providerName?: string };
@@ -76,25 +80,13 @@ function safeParseSettings(raw: string | null): SettingsState | undefined {
   }
 }
 
-function persistSettings(state: SettingsState) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.error("[settings] Failed to persist settings", error);
-  }
-}
-
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] =
     React.useState<SettingsState>(DEFAULT_SETTINGS);
   const [isHydrated, setIsHydrated] = React.useState(false);
 
   React.useEffect(() => {
-    const restored = safeParseSettings(
-      typeof window === "undefined"
-        ? null
-        : window.localStorage.getItem(STORAGE_KEY)
-    );
+    const restored = SETTINGS_STORAGE.read();
     if (restored) {
       setSettings(restored);
     }
@@ -103,7 +95,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!isHydrated) return;
-    persistSettings(settings);
+    SETTINGS_STORAGE.write(settings);
   }, [settings, isHydrated]);
 
   const resetSettings = React.useCallback(() => {

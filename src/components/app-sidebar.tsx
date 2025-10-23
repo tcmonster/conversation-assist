@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Archive,
+  ArchiveRestore,
   ChevronDown,
   Pin,
   PinOff,
@@ -25,53 +27,61 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarHeader,
 } from "@/components/ui/sidebar";
+import type { Conversation } from "@/providers/conversation-provider";
+import { useConversations } from "@/providers/conversation-provider";
 import { cn } from "@/lib/utils";
-
-type ConversationItem = {
-  id: string;
-  title: string;
-  updatedAt: string;
-};
-
-const pinned: ConversationItem[] = [
-  { id: "acme-rfp", title: "Acme RFP · 时间确认", updatedAt: "2 小时前" },
-  { id: "launch-brief", title: "发布会媒体沟通", updatedAt: "昨天" },
-];
-
-const recent: ConversationItem[] = [
-  { id: "supplier-checkin", title: "日本供应商月度检查", updatedAt: "今天" },
-  { id: "support-ticket", title: "客服工单 #4827", updatedAt: "昨天" },
-  { id: "contract-revision", title: "合同条款修订", updatedAt: "周一" },
-  { id: "pricing-followup", title: "报价澄清邮件", updatedAt: "上周" },
-];
-
-const archived: ConversationItem[] = [
-  { id: "pilot-feedback", title: "内测体验反馈", updatedAt: "1 月 10 日" },
-  { id: "holiday-offer", title: "节日营销跟进", updatedAt: "去年 12 月" },
-];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [searchTerm, setSearchTerm] = React.useState("");
   const [isArchivedOpen, setArchivedOpen] = React.useState(false);
+  const {
+    activeId,
+    pinnedConversations,
+    recentConversations,
+    archivedConversations,
+    createConversation,
+    setActiveConversation,
+    togglePin,
+    toggleArchive,
+  } = useConversations();
 
   const search = searchTerm.trim().toLowerCase();
 
   const filterItems = React.useCallback(
-    (items: ConversationItem[]) =>
-      items.filter((item) => item.title.toLowerCase().includes(search)),
+    (items: Conversation[]) => {
+      if (!search) return items;
+      return items.filter(
+        (item) =>
+          item.title.toLowerCase().includes(search) ||
+          item.id.toLowerCase().includes(search)
+      );
+    },
     [search]
   );
 
-  const showPinned = filterItems(pinned);
-  const showRecent = filterItems(recent);
-  const showArchived = filterItems(archived);
+  const filteredPinned = filterItems(pinnedConversations);
+  const filteredRecent = filterItems(recentConversations);
+  const filteredArchived = filterItems(archivedConversations);
+
+  const pinnedEmptyLabel =
+    pinnedConversations.length === 0 ? "暂无置顶会话" : "未找到匹配项";
+  const recentEmptyLabel =
+    recentConversations.length === 0 ? "暂无会话" : "未找到匹配项";
+  const archivedEmptyLabel =
+    archivedConversations.length === 0 ? "暂无归档会话" : "未找到匹配项";
+
+  React.useEffect(() => {
+    if (search) {
+      setArchivedOpen(true);
+    }
+  }, [search]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -85,12 +95,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <span className="text-sm font-semibold leading-tight">
                 Conversation
               </span>
-              <span className="text-xs text-muted-foreground leading-tight">
+              <span className="text-xs leading-tight text-muted-foreground">
                 Assist
               </span>
             </div>
           </div>
-          <Button size="icon" variant="outline">
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => {
+              createConversation();
+              setSearchTerm("");
+            }}
+          >
             <Plus className="h-4 w-4" />
             <span className="sr-only">新建会话</span>
           </Button>
@@ -102,25 +119,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="搜索会话…"
-            className="pl-8 text-sm bg-background"
+            className="bg-background pl-8 text-sm"
           />
           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
-        {showPinned.length > 0 && (
+        {pinnedConversations.length > 0 ? (
           <ConversationSection
             label="置顶"
-            items={showPinned}
-            actionIcon={<PinOff className="h-3.5 w-3.5" />}
+            items={filteredPinned}
+            emptyLabel={pinnedEmptyLabel}
             actionLabel="取消置顶"
-            emptyLabel="暂无置顶会话"
+            actionIcon={PinOff}
+            activeId={activeId}
+            onSelect={setActiveConversation}
+            onAction={togglePin}
           />
-        )}
+        ) : null}
         <ConversationSection
           label="最近"
-          items={showRecent}
-          actionIcon={<Pin className="h-3.5 w-3.5" />}
+          items={filteredRecent}
+          emptyLabel={recentEmptyLabel}
           actionLabel="置顶"
-          emptyLabel="暂无会话"
+          actionIcon={Pin}
+          activeId={activeId}
+          onSelect={setActiveConversation}
+          onAction={togglePin}
         />
         <Collapsible open={isArchivedOpen} onOpenChange={setArchivedOpen}>
           <SidebarGroup className="space-y-1">
@@ -140,11 +163,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <ConversationSection
-                items={showArchived}
-                actionIcon={<Pin className="h-3.5 w-3.5" />}
-                actionLabel="取消归档"
                 label=""
-                emptyLabel="暂无归档会话"
+                items={filteredArchived}
+                emptyLabel={archivedEmptyLabel}
+                actionLabel="取消归档"
+                actionIcon={ArchiveRestore}
+                activeId={activeId}
+                onSelect={setActiveConversation}
+                onAction={toggleArchive}
               />
             </CollapsibleContent>
           </SidebarGroup>
@@ -169,18 +195,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
 type ConversationSectionProps = {
   label?: string;
-  items: ConversationItem[];
-  actionIcon: React.ReactNode;
-  actionLabel: string;
+  items: Conversation[];
   emptyLabel: string;
+  actionLabel: string;
+  actionIcon: LucideIcon;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onAction: (id: string) => void;
 };
 
 function ConversationSection({
   label,
   items,
-  actionIcon,
-  actionLabel,
   emptyLabel,
+  actionLabel,
+  actionIcon: ActionIcon,
+  activeId,
+  onSelect,
+  onAction,
 }: ConversationSectionProps) {
   return (
     <SidebarGroup className="gap-2">
@@ -197,17 +229,35 @@ function ConversationSection({
             </span>
           </SidebarMenuItem>
         ) : (
-          items.map((item) => (
-            <SidebarMenuItem key={item.id}>
-              <SidebarMenuButton className="text-sm" asChild>
-                <button type="button">{item.title}</button>
-              </SidebarMenuButton>
-              <SidebarMenuAction className="text-muted-foreground" showOnHover>
-                {actionIcon}
-                <span className="sr-only">{actionLabel}</span>
-              </SidebarMenuAction>
-            </SidebarMenuItem>
-          ))
+          items.map((item) => {
+            const isActive = activeId === item.id;
+            return (
+              <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton asChild isActive={isActive} className="text-sm">
+                  <button
+                    type="button"
+                    className="flex w-full items-center text-left pr-6"
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span className="line-clamp-1">{item.title}</span>
+                  </button>
+                </SidebarMenuButton>
+                <SidebarMenuAction
+                  className="text-muted-foreground"
+                  showOnHover
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onAction(item.id);
+                  }}
+                  aria-label={actionLabel}
+                >
+                  <ActionIcon className="h-3.5 w-3.5" />
+                  <span className="sr-only">{actionLabel}</span>
+                </SidebarMenuAction>
+              </SidebarMenuItem>
+            );
+          })
         )}
       </SidebarMenu>
     </SidebarGroup>

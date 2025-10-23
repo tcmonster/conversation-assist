@@ -4,7 +4,7 @@ import * as React from "react";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -509,10 +509,8 @@ function ContextTable({
                             <AlertDialogCancel>取消</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => onRemove(item.id)}
-                              className={cn(
-                                buttonVariants({ variant: "destructive" }),
-                                "px-3"
-                              )}
+                              variant="destructive"
+                              className="px-3"
                             >
                               删除
                             </AlertDialogAction>

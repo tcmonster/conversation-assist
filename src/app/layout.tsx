@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SettingsProvider } from "@/providers/settings-provider";
+import { ConversationProvider } from "@/providers/conversation-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
@@ -30,8 +31,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <SettingsProvider>
-          {children}
-          <Toaster closeButton />
+          <ConversationProvider>
+            {children}
+            <Toaster closeButton />
+          </ConversationProvider>
         </SettingsProvider>
       </body>
     </html>
