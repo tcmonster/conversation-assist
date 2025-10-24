@@ -38,7 +38,8 @@ function buildHistory(
   const history: ComposeHistorySource = [];
   for (const row of conversation.feed) {
     if (excludeRowId && row.id === excludeRowId) {
-      continue;
+      // Stop once we reach the target row so re-generation only sees prior history.
+      break;
     }
     const message = row.message;
     if (!message?.content) continue;
