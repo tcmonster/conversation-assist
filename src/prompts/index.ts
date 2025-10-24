@@ -24,7 +24,9 @@ export const REPLY_PROMPT = {
   instruction: [
     "Given the JSON payload, craft a single reply message.",
     "Use the history to understand the conversation flow (partner = sender, self = user).",
-    "Incorporate reference and quote materials when relevant.",
+    "Treat context.references as background material for reasoning; you may summarize or paraphrase them.",
+    "Treat context.quotes as authoritative passages that must be cited verbatim.",
+    "When using context.quotes, keep their structure, ordering, and formatting exactly the same as provided, but translate every piece of textual content into the reply language.",
     "Follow the tonePrompt exactly.",
     "Return only the reply text.",
   ].join(" "),
@@ -54,7 +56,10 @@ export const TONE_PROMPTS: Record<
   },
 };
 
-export function buildTranslationPrompt(content: string, targetLanguage = "中文") {
+export function buildTranslationPrompt(
+  content: string,
+  targetLanguage = "中文"
+) {
   return {
     system: TRANSLATION_PROMPT.system,
     user: TRANSLATION_PROMPT.template
