@@ -309,7 +309,7 @@ function SelectionCard({
   badgeText,
   badgeVariant = "secondary",
   badgeColor = "blue",
-  maxHeight = "max-h-48",
+  maxHeight = "max-h-96",
   className,
   disabled,
   onToggle,
@@ -340,7 +340,7 @@ function SelectionCard({
           </p>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="flex items-start gap-2">
+            <div key={item.id} className="flex items-center gap-2">
               <Checkbox
                 id={item.id}
                 checked={item.checked}
@@ -360,11 +360,6 @@ function SelectionCard({
                 >
                   {item.label}
                 </Label>
-                {item.description ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.description}
-                  </p>
-                ) : null}
               </div>
             </div>
           ))

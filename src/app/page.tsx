@@ -124,7 +124,8 @@ async function copyPlainText(text: string) {
 
 function shouldRenderMirror(mirror?: ConversationMirror | null) {
   if (!mirror) return false;
-  const hasHighlights = Array.isArray(mirror.highlights) && mirror.highlights.length > 0;
+  const hasHighlights =
+    Array.isArray(mirror.highlights) && mirror.highlights.length > 0;
   const hasContent = mirror.content.trim().length > 0;
   const hasStatus = mirror.status && mirror.status !== "idle";
   return hasContent || hasHighlights || hasStatus;
@@ -146,19 +147,18 @@ function toFeedRow(row: ConversationFeedRow): FeedRow | null {
       timestamp: formatTimeLabel(row.message.timestamp),
       content: row.message.content,
     },
-    right:
-      shouldRenderMirror(row.mirror)
-        ? {
-            type: row.mirror!.type,
-            rowId: row.id,
-            direction,
-            timestamp: formatTimeLabel(row.mirror!.timestamp),
-            content: row.mirror!.content,
-            highlights: row.mirror!.highlights,
-            status: row.mirror!.status,
-            error: row.mirror!.error,
-          }
-        : undefined,
+    right: shouldRenderMirror(row.mirror)
+      ? {
+          type: row.mirror!.type,
+          rowId: row.id,
+          direction,
+          timestamp: formatTimeLabel(row.mirror!.timestamp),
+          content: row.mirror!.content,
+          highlights: row.mirror!.highlights,
+          status: row.mirror!.status,
+          error: row.mirror!.error,
+        }
+      : undefined,
   };
 }
 
@@ -187,7 +187,7 @@ export default function Home() {
   const [isDeleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [editState, setEditState] = React.useState<{
     rowId: string;
-   role: ConversationMessageRole;
+    role: ConversationMessageRole;
     content: string;
   } | null>(null);
   const [editDraft, setEditDraft] = React.useState("");
@@ -309,25 +309,27 @@ export default function Home() {
     }> = feedRows.map((row) => {
       const leftCell = row.left;
       const rightCell = row.right;
-      const originalRow = activeConversation.feed.find((item) => item.id === row.id);
+      const originalRow = activeConversation.feed.find(
+        (item) => item.id === row.id
+      );
       const rightRetry = rightCell
         ? rightCell.type === "analysis"
           ? () => {
               void translatePartnerMessage(row.id);
             }
           : rightCell.type === "intent"
-            ? () => {
-                const intentSource = originalRow?.mirror?.content ?? "";
-                void generateReply(intentSource, { rowId: row.id });
-              }
-            : undefined
+          ? () => {
+              const intentSource = originalRow?.mirror?.content ?? "";
+              void generateReply(intentSource, { rowId: row.id });
+            }
+          : undefined
         : undefined;
       const rightRetryLabel = rightCell
         ? rightCell.type === "analysis"
           ? "重新翻译"
           : rightCell.type === "intent"
-            ? "重新生成"
-            : undefined
+          ? "重新生成"
+          : undefined
         : undefined;
       return {
         id: row.id,
@@ -337,7 +339,12 @@ export default function Home() {
             canEdit={leftCell.type === "message"}
             onEdit={
               leftCell.type === "message"
-                ? () => openEditMessage(leftCell.rowId, leftCell.role, leftCell.content)
+                ? () =>
+                    openEditMessage(
+                      leftCell.rowId,
+                      leftCell.role,
+                      leftCell.content
+                    )
                 : undefined
             }
             onDelete={() => openDeleteRow(leftCell.rowId, leftCell.content)}
@@ -586,7 +593,8 @@ export default function Home() {
           <DialogHeader>
             <DialogTitle>编辑消息</DialogTitle>
             <DialogDescription>
-              {editState?.role === "partner" ? "对方消息" : "我方消息"}将被更新并同步保存。
+              {editState?.role === "partner" ? "对方消息" : "我方消息"}
+              将被更新并同步保存。
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -632,66 +640,66 @@ export default function Home() {
             >
               删除
             </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-  <Dialog
-    open={Boolean(mirrorEditState)}
-    onOpenChange={(open) => {
-      if (!open) {
-        setMirrorEditState(null);
-        setMirrorEditDraft("");
-      }
-    }}
-  >
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>编辑意图</DialogTitle>
-        <DialogDescription>更新并保存右侧意图内容。</DialogDescription>
-      </DialogHeader>
-      <Textarea
-        placeholder="请输入新的意图内容…"
-        className="min-h-[160px]"
-        value={mirrorEditDraft}
-        onChange={(event) => setMirrorEditDraft(event.target.value)}
-      />
-      <DialogFooter>
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => {
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={Boolean(mirrorEditState)}
+        onOpenChange={(open) => {
+          if (!open) {
             setMirrorEditState(null);
             setMirrorEditDraft("");
-          }}
-        >
-          取消
-        </Button>
-        <Button
-          type="button"
-          onClick={() => {
-            if (!mirrorEditState) return;
-            const trimmed = mirrorEditDraft.trim();
-            if (!trimmed) {
-              toast.error("意图内容不能为空");
-              return;
-            }
-            updateMirror(mirrorEditState.rowId, {
-              content: trimmed,
-              status: "ready",
-              error: null,
-            });
-            toast.success("意图已更新");
-            setMirrorEditState(null);
-            setMirrorEditDraft("");
-          }}
-          disabled={!mirrorEditDraft.trim()}
-        >
-          保存
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-</SidebarProvider>
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑意图</DialogTitle>
+            <DialogDescription>更新并保存右侧意图内容。</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="请输入新的意图内容…"
+            className="min-h-[160px]"
+            value={mirrorEditDraft}
+            onChange={(event) => setMirrorEditDraft(event.target.value)}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setMirrorEditState(null);
+                setMirrorEditDraft("");
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!mirrorEditState) return;
+                const trimmed = mirrorEditDraft.trim();
+                if (!trimmed) {
+                  toast.error("意图内容不能为空");
+                  return;
+                }
+                updateMirror(mirrorEditState.rowId, {
+                  content: trimmed,
+                  status: "ready",
+                  error: null,
+                });
+                toast.success("意图已更新");
+                setMirrorEditState(null);
+                setMirrorEditDraft("");
+              }}
+              disabled={!mirrorEditDraft.trim()}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SidebarProvider>
   );
 }
 
@@ -841,7 +849,7 @@ function MessageBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(760px,85%)] rounded-2xl border px-4 py-3",
+          "w-fit max-w-[min(900px,85%)] rounded-2xl border px-4 py-3",
           isIncoming
             ? "border-transparent bg-neutral-900 text-background"
             : "border-border bg-background text-foreground"
@@ -896,7 +904,7 @@ function InsightBubble({
     >
       <div
         className={cn(
-          "w-fit max-w-[min(760px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
+          "w-fit max-w-[min(560px,85%)] whitespace-pre-wrap rounded-2xl border px-4 py-3",
           isIncoming
             ? "border-dashed bg-muted text-foreground"
             : "border-dashed bg-card text-foreground",
@@ -999,10 +1007,7 @@ function BubbleMeta({
               title={retryLabel ?? "重新生成"}
             >
               <RefreshCcw
-                className={cn(
-                  "h-4 w-4",
-                  isLoading && "animate-spin"
-                )}
+                className={cn("h-4 w-4", isLoading && "animate-spin")}
               />
               <span className="sr-only">{retryLabel ?? "重新生成"}</span>
             </Button>
@@ -1080,12 +1085,12 @@ function SectionRow(props: SectionRowProps) {
       <div className={cn("relative min-h-0", className)}>
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border"
+          className="pointer-events-none absolute inset-y-0 left-[60%] w-px -translate-x-1/2 bg-border"
         />
         <div
           {...gridRest}
           className={cn(
-            "grid h-full min-h-0 auto-rows-max grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-8 gap-y-4",
+            "grid h-full min-h-0 auto-rows-max grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] items-start gap-x-8 gap-y-4",
             gridClassName,
             gridPropsClassName
           )}
@@ -1121,7 +1126,7 @@ function SectionRow(props: SectionRowProps) {
       <div
         {...gridRest}
         className={cn(
-          "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]",
+          "grid h-full min-h-0 grid-cols-[minmax(0,1.2fr)_1px_minmax(0,0.8fr)]",
           gridClassName,
           gridPropsClassName
         )}
