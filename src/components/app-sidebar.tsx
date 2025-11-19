@@ -6,12 +6,30 @@ import {
   Archive,
   ArchiveRestore,
   ChevronDown,
+  MessageSquare,
+  MoreHorizontal,
   Pin,
   PinOff,
   Plus,
   Search,
   Settings,
+  Star,
+  Trash2,
 } from "lucide-react";
+
+import { TagManagerDialog } from "@/components/settings/tag-manager-dialog";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { Button } from "@/components/ui/button";
@@ -34,7 +52,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import type { Conversation } from "@/providers/conversation-provider";
+import type { Conversation, ConversationTag } from "@/providers/conversation-provider";
 import { useConversations } from "@/providers/conversation-provider";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +68,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setActiveConversation,
     togglePin,
     toggleArchive,
+    deleteConversation,
+    tags,
+    toggleConversationTag,
   } = useConversations();
 
   const search = searchTerm.trim().toLowerCase();
@@ -128,22 +149,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             label="置顶"
             items={filteredPinned}
             emptyLabel={pinnedEmptyLabel}
-            actionLabel="取消置顶"
-            actionIcon={PinOff}
             activeId={activeId}
             onSelect={setActiveConversation}
-            onAction={togglePin}
+            onPin={togglePin}
+            onArchive={toggleArchive}
+            onDelete={deleteConversation}
+            onTagToggle={toggleConversationTag}
+            allTags={tags}
           />
         ) : null}
         <ConversationSection
           label="最近"
           items={filteredRecent}
           emptyLabel={recentEmptyLabel}
-          actionLabel="置顶"
-          actionIcon={Pin}
           activeId={activeId}
           onSelect={setActiveConversation}
-          onAction={togglePin}
+          onPin={togglePin}
+          onArchive={toggleArchive}
+          onDelete={deleteConversation}
+          onTagToggle={toggleConversationTag}
+          allTags={tags}
         />
         <Collapsible open={isArchivedOpen} onOpenChange={setArchivedOpen}>
           <SidebarGroup className="space-y-1">
@@ -166,11 +191,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 label=""
                 items={filteredArchived}
                 emptyLabel={archivedEmptyLabel}
-                actionLabel="取消归档"
-                actionIcon={ArchiveRestore}
                 activeId={activeId}
                 onSelect={setActiveConversation}
-                onAction={toggleArchive}
+                onPin={togglePin}
+                onArchive={toggleArchive}
+                onDelete={deleteConversation}
+                onTagToggle={toggleConversationTag}
+                allTags={tags}
               />
             </CollapsibleContent>
           </SidebarGroup>
@@ -197,23 +224,29 @@ type ConversationSectionProps = {
   label?: string;
   items: Conversation[];
   emptyLabel: string;
-  actionLabel: string;
-  actionIcon: LucideIcon;
   activeId: string | null;
   onSelect: (id: string) => void;
-  onAction: (id: string) => void;
+  onPin: (id: string) => void;
+  onArchive: (id: string) => void;
+  onDelete: (id: string) => void;
+  onTagToggle: (conversationId: string, tagId: string) => void;
+  allTags: ConversationTag[];
 };
 
 function ConversationSection({
   label,
   items,
   emptyLabel,
-  actionLabel,
-  actionIcon: ActionIcon,
   activeId,
   onSelect,
-  onAction,
+  onPin,
+  onArchive,
+  onDelete,
+  onTagToggle,
+  allTags,
 }: ConversationSectionProps) {
+  const [isTagManagerOpen, setTagManagerOpen] = React.useState(false);
+
   return (
     <SidebarGroup className="gap-2">
       {label ? (
@@ -231,35 +264,133 @@ function ConversationSection({
         ) : (
           items.map((item) => {
             const isActive = activeId === item.id;
+            const isPinned = Boolean(item.pinnedAt);
+            const isArchived = Boolean(item.archivedAt);
+
+            // Resolve tags
+            const conversationTags = item.tags
+              .map((tagId) => allTags.find((t) => t.id === tagId))
+              .filter((t): t is ConversationTag => Boolean(t));
+
             return (
               <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton asChild isActive={isActive} className="text-sm">
+                <SidebarMenuButton asChild isActive={isActive} className="text-sm h-auto py-2">
                   <button
                     type="button"
-                    className="flex w-full items-center text-left pr-6"
+                    className="flex w-full items-start text-left pr-8 gap-2"
                     onClick={() => onSelect(item.id)}
                   >
-                    <span className="line-clamp-1">{item.title}</span>
+                    {isPinned ? (
+                      <Star className="h-4 w-4 mt-0.5 shrink-0 fill-yellow-400 text-yellow-400" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <div className="flex flex-col gap-1 min-w-0 flex-1">
+                      <span className="line-clamp-1 font-medium leading-tight">
+                        {item.title}
+                      </span>
+                      {conversationTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {conversationTags.map((tag) => (
+                            <Badge
+                              key={tag.id}
+                              variant="secondary"
+                              className={cn("px-1 py-0 text-[10px] h-4 font-normal", tag.color)}
+                            >
+                              {tag.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 </SidebarMenuButton>
-                <SidebarMenuAction
-                  className="text-muted-foreground"
-                  showOnHover
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onAction(item.id);
-                  }}
-                  aria-label={actionLabel}
-                >
-                  <ActionIcon className="h-3.5 w-3.5" />
-                  <span className="sr-only">{actionLabel}</span>
-                </SidebarMenuAction>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <SidebarMenuAction showOnHover>
+                      <MoreHorizontal />
+                      <span className="sr-only">更多操作</span>
+                    </SidebarMenuAction>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    className="w-48"
+                    side="right"
+                    align="start"
+                  >
+                    <DropdownMenuItem onClick={() => onPin(item.id)}>
+                      {isPinned ? (
+                        <>
+                          <PinOff className="mr-2 h-4 w-4" />
+                          <span>取消置顶</span>
+                        </>
+                      ) : (
+                        <>
+                          <Pin className="mr-2 h-4 w-4" />
+                          <span>置顶会话</span>
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onArchive(item.id)}>
+                      {isArchived ? (
+                        <>
+                          <ArchiveRestore className="mr-2 h-4 w-4" />
+                          <span>取消归档</span>
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="mr-2 h-4 w-4" />
+                          <span>归档会话</span>
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <span className="mr-2">#</span>
+                        <span>标签</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-48">
+                        <DropdownMenuItem onClick={() => setTagManagerOpen(true)}>
+                          <Plus className="mr-2 h-4 w-4" />
+                          <span>管理标签...</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {allTags.length === 0 ? (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            暂无标签
+                          </div>
+                        ) : (
+                          allTags.map((tag) => (
+                            <DropdownMenuCheckboxItem
+                              key={tag.id}
+                              checked={item.tags.includes(tag.id)}
+                              onCheckedChange={() =>
+                                onTagToggle(item.id, tag.id)
+                              }
+                            >
+                              <span className={cn("mr-2 h-2 w-2 rounded-full bg-current shrink-0", tag.color.split(" ")[1])} />
+                              <span className="truncate">{tag.name}</span>
+                            </DropdownMenuCheckboxItem>
+                          ))
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onDelete(item.id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      <span>删除会话</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </SidebarMenuItem>
             );
           })
         )}
       </SidebarMenu>
+      <TagManagerDialog open={isTagManagerOpen} onOpenChange={setTagManagerOpen} />
     </SidebarGroup>
   );
 }

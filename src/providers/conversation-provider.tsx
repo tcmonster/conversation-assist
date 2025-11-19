@@ -40,11 +40,19 @@ export type Conversation = {
   tonePresetId: string;
   selectedReferenceIds: string[];
   selectedQuoteIds: string[];
+  tags: string[];
+};
+
+export type ConversationTag = {
+  id: string;
+  name: string;
+  color: string;
 };
 
 type ConversationState = {
   activeId: string | null;
   conversations: Record<string, Conversation>;
+  tags: Record<string, ConversationTag>;
 };
 
 type ConversationAction =
@@ -56,58 +64,61 @@ type ConversationAction =
   | { type: "rename"; id: string; title: string }
   | { type: "setReplyLanguage"; conversationId: string; replyLanguage: string }
   | {
-      type: "setTonePreset";
-      conversationId: string;
-      tonePresetId: string;
-    }
+    type: "setTonePreset";
+    conversationId: string;
+    tonePresetId: string;
+  }
   | {
-      type: "setSelectedReferenceIds";
-      conversationId: string;
-      referenceIds: string[];
-    }
+    type: "setSelectedReferenceIds";
+    conversationId: string;
+    referenceIds: string[];
+  }
   | {
-      type: "setSelectedQuoteIds";
-      conversationId: string;
-      quoteIds: string[];
-    }
+    type: "setSelectedQuoteIds";
+    conversationId: string;
+    quoteIds: string[];
+  }
   | {
-      type: "addPartnerMessage";
-      conversationId: string;
-      content: string;
-      rowId?: string;
-    }
+    type: "addPartnerMessage";
+    conversationId: string;
+    content: string;
+    rowId?: string;
+  }
   | {
-      type: "addSelfMessage";
-      conversationId: string;
-      content: string;
-      intent?: string;
-      rowId?: string;
-    }
+    type: "addSelfMessage";
+    conversationId: string;
+    content: string;
+    intent?: string;
+    rowId?: string;
+  }
   | {
-      type: "updateMessage";
-      conversationId: string;
-      rowId: string;
-      content: string;
-      intent?: string;
-    }
+    type: "updateMessage";
+    conversationId: string;
+    rowId: string;
+    content: string;
+    intent?: string;
+  }
   | {
-      type: "updateMirror";
-      conversationId: string;
-      rowId: string;
-      mirror: Partial<ConversationMirror>;
-    }
+    type: "updateMirror";
+    conversationId: string;
+    rowId: string;
+    mirror: Partial<ConversationMirror>;
+  }
   | {
-      type: "removeFeedRow";
-      conversationId: string;
-      rowId: string;
-    }
+    type: "removeFeedRow";
+    conversationId: string;
+    rowId: string;
+  }
   | {
-      type: "addIntentDraft";
-      conversationId: string;
-      intent: string;
-      rowId?: string;
-    }
-  | { type: "delete"; id: string };
+    type: "addIntentDraft";
+    conversationId: string;
+    intent: string;
+    rowId?: string;
+  }
+  | { type: "delete"; id: string }
+  | { type: "createTag"; name: string; color: string }
+  | { type: "deleteTag"; id: string }
+  | { type: "toggleConversationTag"; conversationId: string; tagId: string };
 
 type ConversationContextValue = {
   isHydrated: boolean;
@@ -133,6 +144,10 @@ type ConversationContextValue = {
   setTonePreset: (tonePresetId: string) => void;
   setSelectedReferenceIds: (ids: string[]) => void;
   setSelectedQuoteIds: (ids: string[]) => void;
+  tags: ConversationTag[];
+  createTag: (name: string, color: string) => void;
+  deleteTag: (id: string) => void;
+  toggleConversationTag: (conversationId: string, tagId: string) => void;
 };
 
 const CONVERSATION_STORAGE = createStorageSlot<ConversationState>({
@@ -157,6 +172,7 @@ function createEmptyState(): ConversationState {
   return {
     activeId: null,
     conversations: {},
+    tags: {},
   };
 }
 
@@ -359,6 +375,7 @@ function normalizeConversationState(
   return {
     activeId,
     conversations: sanitized,
+    tags: state.tags || {},
   };
 }
 
@@ -390,7 +407,7 @@ function normalizeConversation(input: unknown): Conversation | undefined {
     feed,
     replyLanguage:
       typeof (candidate as { replyLanguage?: unknown }).replyLanguage === "string" &&
-      (candidate as { replyLanguage?: string }).replyLanguage?.trim()
+        (candidate as { replyLanguage?: string }).replyLanguage?.trim()
         ? ((candidate as { replyLanguage?: string }).replyLanguage as string)
         : "auto",
     tonePresetId:
@@ -401,19 +418,26 @@ function normalizeConversation(input: unknown): Conversation | undefined {
       (candidate as { selectedReferenceIds?: unknown }).selectedReferenceIds
     )
       ? dedupeIds(
-          ((candidate as { selectedReferenceIds?: string[] }).selectedReferenceIds ?? []).filter(
-            (item): item is string => typeof item === "string"
-          )
+        ((candidate as { selectedReferenceIds?: string[] }).selectedReferenceIds ?? []).filter(
+          (item): item is string => typeof item === "string"
         )
+      )
       : [],
     selectedQuoteIds: Array.isArray(
       (candidate as { selectedQuoteIds?: unknown }).selectedQuoteIds
     )
       ? dedupeIds(
-          ((candidate as { selectedQuoteIds?: string[] }).selectedQuoteIds ?? []).filter(
-            (item): item is string => typeof item === "string"
-          )
+        ((candidate as { selectedQuoteIds?: string[] }).selectedQuoteIds ?? []).filter(
+          (item): item is string => typeof item === "string"
         )
+      )
+      : [],
+    tags: Array.isArray((candidate as { tags?: unknown }).tags)
+      ? dedupeIds(
+        ((candidate as { tags?: string[] }).tags ?? []).filter(
+          (item): item is string => typeof item === "string"
+        )
+      )
       : [],
   };
 }
@@ -476,8 +500,8 @@ function normalizeMirror(
   const highlights =
     Array.isArray(candidate.highlights) && candidate.highlights.length > 0
       ? candidate.highlights.filter(
-          (item): item is string => typeof item === "string"
-        )
+        (item): item is string => typeof item === "string"
+      )
       : undefined;
 
   const statusCandidate =
@@ -555,8 +579,10 @@ function conversationReducer(
         tonePresetId: "concise",
         selectedReferenceIds: [],
         selectedQuoteIds: [],
+        tags: [],
       };
       return {
+        ...state,
         activeId: id,
         conversations: {
           ...state.conversations,
@@ -716,6 +742,7 @@ function conversationReducer(
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
+        ...state,
         activeId: state.activeId ?? conversation.id,
         conversations: {
           ...state.conversations,
@@ -734,6 +761,7 @@ function conversationReducer(
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
+        ...state,
         activeId: state.activeId ?? conversation.id,
         conversations: {
           ...state.conversations,
@@ -753,6 +781,7 @@ function conversationReducer(
       });
       const nextConversation = appendFeedRow(conversation, row);
       return {
+        ...state,
         activeId: state.activeId ?? conversation.id,
         conversations: {
           ...state.conversations,
@@ -813,25 +842,21 @@ function conversationReducer(
     case "updateMirror": {
       const conversation = state.conversations[action.conversationId];
       if (!conversation) return state;
-      const targetRow = conversation.feed.find((row) => row.id === action.rowId);
-      if (!targetRow) return state;
+      if (!conversation.feed.some((row) => row.id === action.rowId)) {
+        return state;
+      }
+      const now = new Date().toISOString();
       const nextConversation = updateFeedRow(
         conversation,
         action.rowId,
         (row) => {
-          const nextMirror: ConversationMirror = {
-            type: row.mirror?.type ?? (row.message.role === "partner" ? "analysis" : "intent"),
-            content: row.mirror?.content ?? "",
-            timestamp: new Date().toISOString(),
-            highlights: row.mirror?.highlights,
-            status: row.mirror?.status ?? "idle",
-            error: row.mirror?.error ?? null,
-            ...action.mirror,
-          };
-          return {
+          const nextRow: ConversationFeedRow = {
             ...row,
-            mirror: nextMirror,
+            mirror: row.mirror
+              ? { ...row.mirror, ...action.mirror, timestamp: now }
+              : undefined,
           };
+          return nextRow;
         }
       );
       return {
@@ -845,16 +870,16 @@ function conversationReducer(
     case "removeFeedRow": {
       const conversation = state.conversations[action.conversationId];
       if (!conversation) return state;
-      if (!conversation.feed.some((row) => row.id === action.rowId)) {
-        return state;
-      }
-      const filtered = conversation.feed.filter(
+      const nextFeed = conversation.feed.filter(
         (row) => row.id !== action.rowId
       );
+      if (nextFeed.length === conversation.feed.length) {
+        return state;
+      }
       const nextConversation: Conversation = {
         ...conversation,
-        feed: filtered,
-        updatedAt: filtered[filtered.length - 1]?.message.timestamp ?? conversation.updatedAt,
+        feed: nextFeed,
+        updatedAt: new Date().toISOString(),
       };
       return {
         ...state,
@@ -865,16 +890,76 @@ function conversationReducer(
       };
     }
     case "delete": {
-      if (!state.conversations[action.id]) return state;
-      const { [action.id]: _removed, ...rest } = state.conversations;
-      void _removed;
-      const nextActive =
-        state.activeId === action.id
-          ? findNextActiveConversation(rest)
-          : state.activeId;
+      const nextConversations = { ...state.conversations };
+      delete nextConversations[action.id];
+      let nextActiveId = state.activeId;
+      if (state.activeId === action.id) {
+        const remaining = Object.values(nextConversations).filter(
+          (c) => !c.archivedAt
+        );
+        remaining.sort((a, b) => compareDesc(a.updatedAt, b.updatedAt));
+        nextActiveId = remaining[0]?.id ?? null;
+      }
       return {
-        activeId: nextActive,
-        conversations: rest,
+        ...state,
+        activeId: nextActiveId,
+        conversations: nextConversations,
+      };
+    }
+    case "createTag": {
+      const id =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? `tag-${crypto.randomUUID()}`
+          : `tag-${Date.now().toString(36)}`;
+      const newTag: ConversationTag = {
+        id,
+        name: action.name,
+        color: action.color,
+      };
+      return {
+        ...state,
+        tags: {
+          ...state.tags,
+          [id]: newTag,
+        },
+      };
+    }
+    case "deleteTag": {
+      const nextTags = { ...state.tags };
+      delete nextTags[action.id];
+      // Also remove this tag from all conversations
+      const nextConversations = { ...state.conversations };
+      for (const id in nextConversations) {
+        const conversation = nextConversations[id];
+        if (conversation.tags.includes(action.id)) {
+          nextConversations[id] = {
+            ...conversation,
+            tags: conversation.tags.filter((tagId) => tagId !== action.id),
+          };
+        }
+      }
+      return {
+        ...state,
+        tags: nextTags,
+        conversations: nextConversations,
+      };
+    }
+    case "toggleConversationTag": {
+      const conversation = state.conversations[action.conversationId];
+      if (!conversation) return state;
+      const hasTag = conversation.tags.includes(action.tagId);
+      const nextTags = hasTag
+        ? conversation.tags.filter((id) => id !== action.tagId)
+        : [...conversation.tags, action.tagId];
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [conversation.id]: {
+            ...conversation,
+            tags: nextTags,
+          },
+        },
       };
     }
     default:
@@ -882,35 +967,21 @@ function conversationReducer(
   }
 }
 
-function compareDesc(a?: string | null, b?: string | null) {
-  const aTime = getTimeValue(a);
-  const bTime = getTimeValue(b);
-  return bTime - aTime;
+function compareDesc(a: string, b: string) {
+  if (a < b) return 1;
+  if (a > b) return -1;
+  return 0;
 }
 
-function getTimeValue(value?: string | null) {
-  if (!value) return 0;
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
+const ConversationContext = React.createContext<
+  ConversationContextValue | undefined
+>(undefined);
 
-function findNextActiveConversation(
-  conversations: Record<string, Conversation>
-): string | null {
-  const available = Object.values(conversations);
-  if (available.length === 0) return null;
-
-  const notArchived = available.filter((conversation) => !conversation.archivedAt);
-  const pool = notArchived.length > 0 ? notArchived : available;
-
-  return pool.sort((a, b) => compareDesc(a.updatedAt, b.updatedAt))[0]?.id ?? null;
-}
-
-const ConversationContext = React.createContext<ConversationContextValue | undefined>(
-  undefined
-);
-
-export function ConversationProvider({ children }: { children: React.ReactNode }) {
+export function ConversationProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [state, dispatch] = React.useReducer(
     conversationReducer,
     DEFAULT_CONVERSATION_STATE
@@ -918,192 +989,149 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [isHydrated, setIsHydrated] = React.useState(false);
 
   React.useEffect(() => {
-    const restored = CONVERSATION_STORAGE.read();
-    if (restored) {
-      dispatch({ type: "hydrate", payload: restored });
+    const stored = CONVERSATION_STORAGE.read();
+    if (stored) {
+      dispatch({ type: "hydrate", payload: stored });
     }
     setIsHydrated(true);
   }, []);
 
   React.useEffect(() => {
-    if (!isHydrated) return;
-    CONVERSATION_STORAGE.write(state);
+    if (isHydrated) {
+      CONVERSATION_STORAGE.write(state);
+    }
   }, [state, isHydrated]);
 
-  const conversationsArray = React.useMemo(
-    () => Object.values(state.conversations),
-    [state.conversations]
-  );
+  const value = React.useMemo<ConversationContextValue>(() => {
+    const conversations = state.conversations;
+    const allConversations = Object.values(conversations);
+    const pinnedConversations = allConversations
+      .filter((c) => c.pinnedAt && !c.archivedAt)
+      .sort((a, b) => compareDesc(a.pinnedAt!, b.pinnedAt!));
+    const recentConversations = allConversations
+      .filter((c) => !c.pinnedAt && !c.archivedAt)
+      .sort((a, b) => compareDesc(a.updatedAt, b.updatedAt));
+    const archivedConversations = allConversations
+      .filter((c) => c.archivedAt)
+      .sort((a, b) => compareDesc(a.archivedAt!, b.archivedAt!));
 
-  const pinnedConversations = React.useMemo(
-    () =>
-      conversationsArray
-        .filter((conversation) => Boolean(conversation.pinnedAt) && !conversation.archivedAt)
-        .sort((a, b) => {
-          const byPinned = compareDesc(a.pinnedAt, b.pinnedAt);
-          if (byPinned !== 0) return byPinned;
-          return compareDesc(a.updatedAt, b.updatedAt);
-        }),
-    [conversationsArray]
-  );
-
-  const archivedConversations = React.useMemo(
-    () =>
-      conversationsArray
-        .filter((conversation) => Boolean(conversation.archivedAt))
-        .sort((a, b) => {
-          const byArchived = compareDesc(a.archivedAt, b.archivedAt);
-          if (byArchived !== 0) return byArchived;
-          return compareDesc(a.updatedAt, b.updatedAt);
-        }),
-    [conversationsArray]
-  );
-
-  const recentConversations = React.useMemo(
-    () =>
-      conversationsArray
-        .filter(
-          (conversation) => !conversation.pinnedAt && !conversation.archivedAt
-        )
-        .sort((a, b) => compareDesc(a.updatedAt, b.updatedAt)),
-    [conversationsArray]
-  );
-
-  const activeConversation =
-    state.activeId && state.conversations[state.activeId]
-      ? state.conversations[state.activeId]
-      : undefined;
-
-  const value = React.useMemo<ConversationContextValue>(
-    () => ({
+    return {
       isHydrated,
       activeId: state.activeId,
-      activeConversation,
-      conversations: state.conversations,
+      activeConversation: state.activeId
+        ? conversations[state.activeId]
+        : undefined,
+      conversations,
       pinnedConversations,
       recentConversations,
       archivedConversations,
       createConversation: () => dispatch({ type: "create" }),
-      renameConversation: (id: string, title: string) =>
+      renameConversation: (id, title) =>
         dispatch({ type: "rename", id, title }),
-      addPartnerMessage: (content: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return undefined;
-        const rowId = createFeedRowId(targetId);
+      addPartnerMessage: (content) => {
+        if (!state.activeId) return;
+        const rowId = createFeedRowId(state.activeId);
         dispatch({
           type: "addPartnerMessage",
-          conversationId: targetId,
+          conversationId: state.activeId,
           content,
           rowId,
         });
         return rowId;
       },
-      addSelfMessage: (content: string, intent?: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return undefined;
-        const rowId = createFeedRowId(targetId);
+      addSelfMessage: (content, intent) => {
+        if (!state.activeId) return;
+        const rowId = createFeedRowId(state.activeId);
         dispatch({
           type: "addSelfMessage",
-          conversationId: targetId,
+          conversationId: state.activeId,
           content,
           intent,
           rowId,
         });
         return rowId;
       },
-      addIntentDraft: (intent: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return undefined;
-        const rowId = createFeedRowId(targetId);
+      addIntentDraft: (intent) => {
+        if (!state.activeId) return;
+        const rowId = createFeedRowId(state.activeId);
         dispatch({
           type: "addIntentDraft",
-          conversationId: targetId,
+          conversationId: state.activeId,
           intent,
           rowId,
         });
         return rowId;
       },
-      updateMessage: (rowId: string, content: string, options) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      updateMessage: (rowId, content, options) => {
+        if (!state.activeId) return;
         dispatch({
           type: "updateMessage",
-          conversationId: targetId,
+          conversationId: state.activeId,
           rowId,
           content,
           intent: options?.intent,
         });
       },
-      updateMirror: (rowId: string, mirror) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      removeFeedRow: (rowId) => {
+        if (!state.activeId) return;
+        dispatch({
+          type: "removeFeedRow",
+          conversationId: state.activeId,
+          rowId,
+        });
+      },
+      updateMirror: (rowId, mirror) => {
+        if (!state.activeId) return;
         dispatch({
           type: "updateMirror",
-          conversationId: targetId,
+          conversationId: state.activeId,
           rowId,
           mirror,
         });
       },
-      removeFeedRow: (rowId: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
-        dispatch({
-          type: "removeFeedRow",
-          conversationId: targetId,
-          rowId,
-        });
-      },
-      setActiveConversation: (id: string) => dispatch({ type: "setActive", id }),
-      togglePin: (id: string) => dispatch({ type: "togglePin", id }),
-      toggleArchive: (id: string) => dispatch({ type: "toggleArchive", id }),
-      deleteConversation: (id: string) => dispatch({ type: "delete", id }),
-      setReplyLanguage: (replyLanguage: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      setActiveConversation: (id) => dispatch({ type: "setActive", id }),
+      togglePin: (id) => dispatch({ type: "togglePin", id }),
+      toggleArchive: (id) => dispatch({ type: "toggleArchive", id }),
+      deleteConversation: (id) => dispatch({ type: "delete", id }),
+      setReplyLanguage: (replyLanguage) => {
+        if (!state.activeId) return;
         dispatch({
           type: "setReplyLanguage",
-          conversationId: targetId,
+          conversationId: state.activeId,
           replyLanguage,
         });
       },
-      setTonePreset: (tonePresetId: string) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      setTonePreset: (tonePresetId) => {
+        if (!state.activeId) return;
         dispatch({
           type: "setTonePreset",
-          conversationId: targetId,
+          conversationId: state.activeId,
           tonePresetId,
         });
       },
-      setSelectedReferenceIds: (ids: string[]) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      setSelectedReferenceIds: (ids) => {
+        if (!state.activeId) return;
         dispatch({
           type: "setSelectedReferenceIds",
-          conversationId: targetId,
+          conversationId: state.activeId,
           referenceIds: ids,
         });
       },
-      setSelectedQuoteIds: (ids: string[]) => {
-        const targetId = state.activeId;
-        if (!targetId) return;
+      setSelectedQuoteIds: (ids) => {
+        if (!state.activeId) return;
         dispatch({
           type: "setSelectedQuoteIds",
-          conversationId: targetId,
+          conversationId: state.activeId,
           quoteIds: ids,
         });
       },
-    }),
-    [
-      activeConversation,
-      archivedConversations,
-      isHydrated,
-      pinnedConversations,
-      recentConversations,
-      state.activeId,
-      state.conversations,
-    ]
-  );
+      tags: Object.values(state.tags),
+      createTag: (name, color) => dispatch({ type: "createTag", name, color }),
+      deleteTag: (id) => dispatch({ type: "deleteTag", id }),
+      toggleConversationTag: (conversationId, tagId) =>
+        dispatch({ type: "toggleConversationTag", conversationId, tagId }),
+    };
+  }, [state, isHydrated]);
 
   return (
     <ConversationContext.Provider value={value}>
