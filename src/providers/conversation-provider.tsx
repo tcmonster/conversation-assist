@@ -148,6 +148,7 @@ type ConversationContextValue = {
   createTag: (name: string, color: string) => void;
   deleteTag: (id: string) => void;
   toggleConversationTag: (conversationId: string, tagId: string) => void;
+  importConversations: (state: ConversationState) => void;
 };
 
 const CONVERSATION_STORAGE = createStorageSlot<ConversationState>({
@@ -1130,6 +1131,7 @@ export function ConversationProvider({
       deleteTag: (id) => dispatch({ type: "deleteTag", id }),
       toggleConversationTag: (conversationId, tagId) =>
         dispatch({ type: "toggleConversationTag", conversationId, tagId }),
+      importConversations: (payload) => dispatch({ type: "hydrate", payload }),
     };
   }, [state, isHydrated]);
 

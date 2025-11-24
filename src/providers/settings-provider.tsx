@@ -23,8 +23,15 @@ export type QuoteItem = {
   content: string;
 };
 
+export type SyncSettings = {
+  githubToken: string;
+  githubUsername: string;
+  githubRepo: string;
+};
+
 export type SettingsState = {
   models: ModelSettings;
+  sync: SyncSettings;
   references: ReferenceItem[];
   quotes: QuoteItem[];
 };
@@ -35,6 +42,11 @@ export const DEFAULT_SETTINGS: SettingsState = {
     apiKey: "",
     translationModel: "",
     replyModel: "",
+  },
+  sync: {
+    githubToken: "",
+    githubUsername: "",
+    githubRepo: "",
   },
   references: [],
   quotes: [],
@@ -60,6 +72,7 @@ function safeParseSettings(raw: string): SettingsState | undefined {
   try {
     const parsed = JSON.parse(raw) as Partial<SettingsState> & {
       models?: Partial<ModelSettings> & { providerName?: string };
+      sync?: Partial<SyncSettings>;
     };
     const { providerName: _legacyProviderName, ...restModels } = parsed?.models ?? {};
     void _legacyProviderName;
@@ -67,6 +80,7 @@ function safeParseSettings(raw: string): SettingsState | undefined {
       ...DEFAULT_SETTINGS,
       ...parsed,
       models: { ...DEFAULT_SETTINGS.models, ...restModels },
+      sync: { ...DEFAULT_SETTINGS.sync, ...parsed.sync },
       references: Array.isArray(parsed?.references)
         ? parsed.references
         : DEFAULT_SETTINGS.references,

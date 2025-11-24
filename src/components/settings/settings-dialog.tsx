@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { CloudDownload, CloudUpload, Loader2, Pencil, Plus, RefreshCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+
+import { GithubSyncService } from "@/lib/sync";
+import { useConversations } from "@/providers/conversation-provider";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -52,7 +55,7 @@ type SettingsDialogProps = {
   children?: React.ReactNode;
 };
 
-type SettingsSection = "model" | "reference" | "quote";
+type SettingsSection = "model" | "reference" | "quote" | "sync";
 
 type ContextType = Extract<SettingsSection, "reference" | "quote">;
 
@@ -68,25 +71,31 @@ const sections: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    id: "model",
-    label: "模型 API",
-    description: "配置模型 Base URL、密钥与默认翻译/生成模型。",
-  },
-  {
-    id: "reference",
-    label: "参考信息",
-    description: "维护可供 AI 参考的上下文信息列表,例如公司背景与项目历史。",
-  },
-  {
-    id: "quote",
-    label: "引用文本",
-    description: "维护可直接引用的原始文本片段,用于在回复中引用关键内容。",
-  },
-];
+    {
+      id: "model",
+      label: "模型 API",
+      description: "配置模型 Base URL、密钥与默认翻译/生成模型。",
+    },
+    {
+      id: "reference",
+      label: "参考信息",
+      description: "维护可供 AI 参考的上下文信息列表,例如公司背景与项目历史。",
+    },
+    {
+      id: "quote",
+      label: "引用文本",
+      description: "维护可直接引用的原始文本片段,用于在回复中引用关键内容。",
+    },
+    {
+      id: "sync",
+      label: "数据同步",
+      description: "配置 GitHub 仓库以同步对话数据和设置。",
+    },
+  ];
 
 export function SettingsDialog({ children }: SettingsDialogProps) {
   const { settings, setSettings, isHydrated } = useSettings();
+  const { conversations, tags, activeId, importConversations } = useConversations();
   const [open, setOpen] = React.useState(false);
   const [activeSection, setActiveSection] =
     React.useState<SettingsSection>("model");
@@ -101,6 +110,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
   const selectedSection = sections.find((item) => item.id === activeSection)!;
   const [contextEditor, setContextEditor] =
     React.useState<ContextEditorState>(null);
+  const [isSyncing, setIsSyncing] = React.useState(false);
 
   const handleModelFieldChange = (
     field: keyof SettingsState["models"],
@@ -110,6 +120,19 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
       ...prev,
       models: {
         ...prev.models,
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSyncFieldChange = (
+    field: keyof SettingsState["sync"],
+    value: string
+  ) => {
+    setDraft((prev) => ({
+      ...prev,
+      sync: {
+        ...prev.sync,
         [field]: value,
       },
     }));
@@ -150,6 +173,13 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     }));
   }, [draft.quotes, setSettings]);
 
+  const persistSync = React.useCallback(() => {
+    setSettings((prev) => ({
+      ...prev,
+      sync: { ...draft.sync },
+    }));
+  }, [draft.sync, setSettings]);
+
   const handleSave = React.useCallback(() => {
     try {
       if (!isHydrated) {
@@ -163,6 +193,8 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
         persistReferences();
       } else if (activeSection === "quote") {
         persistQuotes();
+      } else if (activeSection === "sync") {
+        persistSync();
       }
 
       toast.success("设置已保存");
@@ -176,7 +208,139 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     persistModels,
     persistQuotes,
     persistReferences,
+    persistSync,
   ]);
+
+  const handleSyncUpload = React.useCallback(async () => {
+    const { githubToken, githubUsername, githubRepo } = draft.sync;
+    if (!githubToken || !githubUsername || !githubRepo) {
+      toast.error("请先完善 GitHub 配置信息");
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      const service = new GithubSyncService(
+        githubToken,
+        githubUsername,
+        githubRepo
+      );
+
+      // Persist current draft settings first to ensure we sync what's on screen if user hasn't saved
+      // But actually we should probably sync the *saved* settings + conversations.
+      // However, user might want to sync the *current* state including unsaved changes?
+      // Let's stick to syncing the *current application state*.
+      // But wait, `conversations` comes from provider (current state).
+      // `settings` comes from provider (saved state).
+      // If user changed settings in dialog but didn't save, `settings` is old.
+      // Let's use `draft` for settings to be safe, or force save first.
+      // Simpler: use `draft` for settings, `conversations` from provider.
+
+      await service.upload({
+        conversations,
+        tags: tags.reduce((acc, tag) => ({ ...acc, [tag.id]: tag }), {}),
+        activeId,
+        settings: {
+          ...draft,
+          // Ensure we don't accidentally sync partial state if something is wrong, 
+          // but draft should be complete.
+        },
+        timestamp: new Date().toISOString(),
+        version: 1,
+      });
+
+      toast.success("数据已同步至 GitHub");
+    } catch (error) {
+      console.error("[sync] Upload failed", error);
+      toast.error("同步失败", {
+        description: error instanceof Error ? error.message : "未知错误",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [conversations, draft, tags, activeId]);
+
+  const handleSyncDownload = React.useCallback(async () => {
+    const { githubToken, githubUsername, githubRepo } = draft.sync;
+    if (!githubToken || !githubUsername || !githubRepo) {
+      toast.error("请先完善 GitHub 配置信息");
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      const service = new GithubSyncService(
+        githubToken,
+        githubUsername,
+        githubRepo
+      );
+
+      const data = await service.download();
+      if (!data) {
+        toast.error("未找到备份文件");
+        return;
+      }
+
+      // Restore settings
+      setSettings(data.settings);
+      setDraft(data.settings); // Update local draft too
+
+      // Restore conversations
+      // We need to construct the full ConversationState
+      // activeId and tags are part of ConversationState.
+      // The backup has `conversations` map.
+      // We should probably backup the WHOLE ConversationState, not just conversations map.
+      // But `conversations` from useConversations is just the map.
+      // `tags` is array.
+      // `activeId` is string.
+
+      // Wait, `BackupData` defined in `sync.ts` has `conversations: Record<string, Conversation>`.
+      // It misses `tags` and `activeId`.
+      // This is a limitation of my `BackupData` definition.
+      // I should probably have included tags and activeId.
+      // For now, let's just restore conversations and keep existing tags/activeId if possible, 
+      // or better, update `BackupData` to include them? 
+      // The user asked to sync "all conversations and settings".
+      // Tags are part of conversations (referenced by ID) but defined separately in state.
+      // If I don't sync tags definition, the tags in conversations will be invalid.
+
+      // I should update `BackupData` in `sync.ts` to include `tags` and `activeId`?
+      // Or just `ConversationState`.
+      // But `useConversations` doesn't give me the raw state object easily?
+      // It gives `conversations` (map), `tags` (array), `activeId`.
+      // I can reconstruct `ConversationState`.
+
+      const restoredState = {
+        activeId: activeId, // Keep current active or maybe null? 
+        // If we download, we probably want to restore the activeId from backup if we had it.
+        // But since I didn't backup it, I'll just use current or null.
+        conversations: data.conversations,
+        tags: tags.reduce((acc, tag) => ({ ...acc, [tag.id]: tag }), {}), // We only have current tags here!
+        // This is bad. I need to backup tags too.
+      };
+
+      // FIX: I need to update `sync.ts` to include tags.
+      // But for now, I will proceed with what I have and maybe fix `sync.ts` in a separate step if I can't do it here.
+      // Actually, I can't change `sync.ts` in this tool call.
+      // I will implement a "best effort" restore here, and then I will IMPROVE `sync.ts` in the next step to include tags.
+      // Actually, I can just update `sync.ts` AFTER this.
+
+      importConversations({
+        activeId: data.activeId ?? null,
+        conversations: data.conversations,
+        tags: data.tags ?? {},
+      });
+
+      toast.success("数据已从 GitHub 恢复");
+    } catch (error) {
+      console.error("[sync] Download failed", error);
+      toast.error("恢复失败", {
+        description: error instanceof Error ? error.message : "未知错误",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [activeId, draft.sync, importConversations, setSettings, tags]);
 
   const openEditor = React.useCallback(
     (type: ContextType, item?: ReferenceItem | QuoteItem) => {
@@ -324,6 +488,100 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             onEdit={(item) => openEditor("quote", item)}
             onRemove={removeQuote}
           />
+        );
+      case "sync":
+        return (
+          <div className="space-y-6" role="form" aria-label="数据同步设置">
+            <div className="space-y-4">
+              <SectionField
+                label="GitHub Personal Access Token"
+                htmlFor="githubToken"
+                description="需要具有 repo 权限的 Token。"
+              >
+                <Input
+                  id="githubToken"
+                  type="password"
+                  value={draft.sync.githubToken}
+                  onChange={(event) =>
+                    handleSyncFieldChange("githubToken", event.currentTarget.value)
+                  }
+                  placeholder="ghp_..."
+                />
+              </SectionField>
+              <div className="grid grid-cols-2 gap-4">
+                <SectionField
+                  label="GitHub Username"
+                  htmlFor="githubUsername"
+                >
+                  <Input
+                    id="githubUsername"
+                    value={draft.sync.githubUsername}
+                    onChange={(event) =>
+                      handleSyncFieldChange(
+                        "githubUsername",
+                        event.currentTarget.value
+                      )
+                    }
+                    placeholder="username"
+                  />
+                </SectionField>
+                <SectionField
+                  label="Repository Name"
+                  htmlFor="githubRepo"
+                >
+                  <Input
+                    id="githubRepo"
+                    value={draft.sync.githubRepo}
+                    onChange={(event) =>
+                      handleSyncFieldChange("githubRepo", event.currentTarget.value)
+                    }
+                    placeholder="repo-name"
+                  />
+                </SectionField>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium">同步操作</h4>
+                <p className="text-xs text-muted-foreground">
+                  手动上传或下载数据。下载操作将覆盖当前所有数据。
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSyncUpload}
+                  disabled={isSyncing}
+                  className="flex-1 gap-2"
+                >
+                  {isSyncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CloudUpload className="h-4 w-4" />
+                  )}
+                  上传同步
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSyncDownload}
+                  disabled={isSyncing}
+                  className="flex-1 gap-2"
+                >
+                  {isSyncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="h-4 w-4" />
+                  )}
+                  下载覆盖
+                </Button>
+              </div>
+            </div>
+          </div>
         );
       default:
         return null;
