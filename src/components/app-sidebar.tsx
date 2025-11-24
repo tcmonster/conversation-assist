@@ -112,7 +112,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
               CA
             </div>
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
               <span className="text-sm font-semibold leading-tight">
                 Conversation
               </span>
@@ -124,23 +124,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             size="icon"
             variant="outline"
+            className="group-data-[collapsible=icon]:hidden"
             onClick={() => {
               createConversation();
               setSearchTerm("");
             }}
           >
-            <Plus className="h-4 w-4" />
-            <span className="sr-only">新建会话</span>
-          </Button>
-        </div>
-      </SidebarHeader>
-      <SidebarContent className="gap-4 px-3 py-4">
-        <div className="relative">
-          <Input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="搜索会话…"
-            className="bg-background pl-8 text-sm"
+          <Plus className="h-4 w-4" />
+          <span className="sr-only">新建会话</span>
+        </Button>
+      </div>
+    </SidebarHeader>
+    <SidebarContent className="gap-4 px-3 py-4 group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:py-3">
+      <div className="relative group-data-[collapsible=icon]:hidden">
+        <Input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="搜索会话…"
+          className="bg-background pl-8 text-sm"
           />
           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
@@ -174,13 +175,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup className="space-y-1">
             <CollapsibleTrigger asChild>
               <button className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground transition hover:bg-muted/60">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 group-data-[collapsible=icon]:hidden">
                   <Archive className="h-3.5 w-3.5" />
                   Archived
                 </span>
                 <ChevronDown
                   className={cn(
-                    "h-3 w-3 transition-transform",
+                    "h-3 w-3 transition-transform group-data-[collapsible=icon]:hidden",
                     isArchivedOpen ? "rotate-180" : "rotate-0"
                   )}
                 />
@@ -208,10 +209,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2 text-sm"
+            className="w-full justify-start gap-2 text-sm group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!p-0"
           >
             <Settings className="h-4 w-4" />
-            全局设置
+            <span className="group-data-[collapsible=icon]:hidden">全局设置</span>
           </Button>
         </SettingsDialog>
       </SidebarFooter>
@@ -248,7 +249,7 @@ function ConversationSection({
   const [isTagManagerOpen, setTagManagerOpen] = React.useState(false);
 
   return (
-    <SidebarGroup className="gap-2">
+    <SidebarGroup className="gap-2 group-data-[collapsible=icon]:px-0.5">
       {label ? (
         <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
@@ -257,7 +258,7 @@ function ConversationSection({
       <SidebarMenu>
         {items.length === 0 ? (
           <SidebarMenuItem>
-            <span className="px-2 py-1 text-xs text-muted-foreground">
+            <span className="px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
               {emptyLabel}
             </span>
           </SidebarMenuItem>
@@ -274,36 +275,35 @@ function ConversationSection({
 
             return (
               <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton asChild isActive={isActive} className="text-sm h-auto py-2">
-                  <button
-                    type="button"
-                    className="flex w-full items-start text-left pr-8 gap-2"
-                    onClick={() => onSelect(item.id)}
-                  >
-                    {isPinned ? (
-                      <Star className="h-4 w-4 mt-0.5 shrink-0 fill-yellow-400 text-yellow-400" />
-                    ) : (
-                      <MessageSquare className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <SidebarMenuButton
+                  isActive={isActive}
+                  tooltip={item.title}
+                  className="h-auto items-start py-2 pr-8 text-sm group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!items-center group-data-[collapsible=icon]:!mx-auto"
+                  onClick={() => onSelect(item.id)}
+                >
+                  {isPinned ? (
+                    <Star className="mt-0.5 h-4 w-4 shrink-0 fill-yellow-400 text-yellow-400 group-data-[collapsible=icon]:!mt-0" />
+                  ) : (
+                    <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:!mt-0" />
+                  )}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:items-center">
+                    <span className="line-clamp-1 font-medium leading-tight">
+                      {item.title}
+                    </span>
+                    {conversationTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {conversationTags.map((tag) => (
+                          <Badge
+                            key={tag.id}
+                            variant="secondary"
+                            className={cn("h-4 px-1 py-0 text-[10px] font-normal", tag.color)}
+                          >
+                            {tag.name}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
-                    <div className="flex flex-col gap-1 min-w-0 flex-1">
-                      <span className="line-clamp-1 font-medium leading-tight">
-                        {item.title}
-                      </span>
-                      {conversationTags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {conversationTags.map((tag) => (
-                            <Badge
-                              key={tag.id}
-                              variant="secondary"
-                              className={cn("px-1 py-0 text-[10px] h-4 font-normal", tag.color)}
-                            >
-                              {tag.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </button>
+                  </div>
                 </SidebarMenuButton>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

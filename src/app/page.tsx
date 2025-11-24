@@ -1095,13 +1095,13 @@ function SectionRow(props: SectionRowProps) {
             gridPropsClassName
           )}
           style={{
-            scrollbarGutter: "stable both-edges",
+            scrollbarGutter: "stable",
             ...gridPropsStyle,
           }}
         >
           {rows.map((row) => (
             <React.Fragment key={row.id}>
-              <div className="flex h-full min-h-0 flex-col gap-2">
+              <div className="flex h-full min-h-0 flex-col gap-2 pl-4">
                 {row.left ?? null}
               </div>
               <div className="flex h-full min-h-0 flex-col gap-2 pr-4">
@@ -1131,7 +1131,7 @@ function SectionRow(props: SectionRowProps) {
           gridPropsClassName
         )}
         style={{
-          scrollbarGutter: "stable both-edges",
+          scrollbarGutter: "stable",
           ...gridPropsStyle,
         }}
       >
